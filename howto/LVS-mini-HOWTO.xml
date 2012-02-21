@@ -1,0 +1,4759 @@
+<?xml version="1.0"?>
+<!DOCTYPE article PUBLIC "-//OASIS//DTD Docbook XML V4.1.2//EN"
+"/usr/local/share/sgml/docbook/xml-dtd-4.1.2/docbookx.dtd">
+<article>
+	<articleinfo>
+	<title>LVS-mini-HOWTO </title>
+	<author>
+		<firstname>Joseph</firstname>
+		<surname>Mack</surname>
+		<affiliation>
+			<orgname>jmack (at) wm7d (dot) net </orgname>
+			<orgdiv></orgdiv>
+		</affiliation>
+	</author>
+	<pubdate>v2008.11 Nov 2008, released under GPL.</pubdate>
+	<copyright>
+		<year>2001</year>
+		<year>2002</year>
+		<year>2003</year>
+		<year>2004</year>
+		<year>2005</year>
+		<year>2006</year>
+		<year>2007</year>
+		<year>2008</year>
+		<holder>Joseph Mack</holder>
+	</copyright>
+	</articleinfo>
+<abstract>
+<para>
+<emphasis role="bold">Purpose of this document</emphasis>
+</para>
+
+<para>
+To show you how to install a Linux Virtual Server (LVS)
+and to set up a few demonstration virtual servers.
+No knowlege of the workings of LVS is needed or explained here. 
+You will need to be familiar with configuring Linux.
+You are expected to use the instructions here to setup
+your first LVS, if you can't do it any other way. 
+</para>
+<para>
+Once you can get an LVS to work, you should read the docs and the
+<ulink url="http://www.austintek.com/LVS/LVS-HOWTO/HOWTO/index.html">LVS-HOWTO</ulink>
+(http://www.austintek.com/LVS/LVS-HOWTO/HOWTO/index.html)
+to understand how an LVS works and to setup the LVS you want.
+If you have trouble with your own LVS setup, read the instructions in the
+<ulink url="http://www.austintek.com/LVS/LVS-HOWTO/HOWTO/LVS-HOWTO.introduction.html">LVS-HOWTO introduction</ulink>
+(http://www.austintek.com/LVS/LVS-HOWTO/HOWTO/LVS-HOWTO.introduction.html)
+about getting help, before posting to the mailing list.
+</para>
+
+</abstract>
+
+<section id="title">
+<title>Introduction</title>
+
+<para>
+Everything you want to know
+(code, docs, mailing list, mailing list archives) can be found somewhere on the
+<ulink url="http://www.linuxvirtualserver.org">LVS website</ulink>
+</para>
+
+<para>The neccessity of this mini-HOWTO was pointed out by
+ratz <emphasis>ratz (at) tac (dot) ch</emphasis> who made suggestions for content
+and who proof-read the text.
+Other suggestions came from John Cronin
+<emphasis>jsc3 (at) havoc (dot) gtf (dot) org</emphasis>. 
+This originally was a set of instructions to get an LVS
+up quickly without having much of an idea of how an LVS worked.
+However this lead to duplication of instructions in the
+HOWTO and the mini-HOWTO. Eventually it became easier
+to move all the instructions to one place. Now the
+mini-HOWTO contains more than the minimum you need to know to
+set up a working demonstration LVS.
+</para>
+
+<para>
+This document is written in xml.
+</para>
+
+	<section id="location">
+	<title>Location of this document</title>
+
+	<para>
+On the
+<ulink url="http://www.austintek.com/LVS/LVS-HOWTO/mini-HOWTO/LVS-mini-HOWTO.html">
+LVS-HOWTO website</ulink> and also linked from the
+<ulink url="http://www.linuxvirtualserver.org/Documents.html">
+LVS documentation</ulink> page.
+	</para>
+
+	</section>
+	
+	<section id="what">
+	<title>What an LVS does</title>
+	<para>
+An LVS is a group of servers with a director that appear
+to the outside world (a client on the internet) as one
+server. The LVS can offer more services, or services of
+higher capacity/throughput, or redundant services (where
+individual servers can be brought down for maintenance)
+than is available from a single server. A service is
+defined here as a connection to a single port, eg telnet,
+http, https, nntp, ntp, nfs, ntp, ssh, smtp, pop, databases.
+Multiport services (eg ftp for LVS-NAT) are also handled
+as a special case.
+Other multiport protocols
+(<emphasis>e.g.</emphasis> passive ftp, http/https for e-commerce sites) are handled
+by LVS persistance or more recently by
+<ulink url="http://www.austintek.com/LVS/LVS-HOWTO/HOWTO/LVS-HOWTO.fwmark.html">
+fwmark</ulink> in the HOWTO.
+	</para>
+
+	<para>
+In the computer bestiary, and LVS is a layer-4 switch.
+Standard client-server semantics are preserved. Each
+client thinks that it has connected directly with
+the realserver. Each realserver thinks that it
+has connected directly to the client. Neither the
+client nor the realservers have any way of telling
+that a director has intervened in the connection.
+	</para>
+
+	<para>
+An LVS is not a beowulf - a beowulf is a group of machines
+each of which is cooperatively calculating a small part
+of a larger problem. It is not a cluster - a cluster
+of machines is a set of machines which cooperatively
+distribute processing. The realservers in an LVS do
+not cooperate - they have no knowlege of any other
+realservers in the LVS. All a realserver knows
+about is that it gets connections from a client.
+	</para>
+
+	<para>
+This mini-HOWTO, will demonstrate LVS setup for the
+services telnet and http.
+	</para>
+	</section>
+</section>
+
+<section id="lvs_ascii">
+<title>Minimum Hardware/Network requirements</title>
+
+<para>
+Here's a typical LVS-NAT setup.
+</para>
+
+<programlisting><![CDATA[
+                        ________
+                       |        |
+                       | client | (local or on internet)
+                       |________|
+                           |
+                        (router)
+                       DIRECTOR_GW
+                           |
+--                         |
+L                      Virtual IP
+i                      ____|_____
+n                     |          | (director can have 1 or 2 NICs)
+u                     | director |
+x                     |__________|
+                          DIP
+V                          |
+i                          |
+r         -----------------+----------------
+t         |                |               |
+u         |                |               |
+a        RIP1             RIP2            RIP3
+l   ____________     ____________     ____________
+   |            |   |            |   |            |
+S  | realserver |   | realserver |   | realserver |
+e  |____________|   |____________|   |____________|
+r
+v
+e
+r
+]]></programlisting>
+
+<para>
+Here is a typical LVS-DR or LVS-Tun setup.
+</para>
+
+<programlisting>
+<![CDATA[
+                        ________
+                       |        |
+                       | client | (local or on internet)
+                       |________|
+                           |
+                        (router)-----------
+                           |    SERVER_GW  |
+--                         |               |
+L                         VIP              |
+i                      ____|_____          |
+n                     |          | (director can have 1 or 2 NICs)
+u                     | director |         |
+x                     |__________|         |
+                          DIP              |
+V                          |               |
+i                          |               |
+r         -----------------+----------------
+t         |                |               |
+u         |                |               |
+a      RIP1,VIP         RIP2,VIP        RIP3,VIP
+l   ____________     ____________     ____________
+   |            |   |            |   |            |
+S  | realserver |   | realserver |   | realserver |
+e  |____________|   |____________|   |____________|
+r
+v
+e
+r
+]]>
+</programlisting>
+
+<para>
+For director failover (covered in the
+<ulink url="http://www.austintek.com/LVS/LVS-HOWTO/HOWTO/LVS-HOWTO.failover.html">
+LVS-HOWTO</ulink>),
+the VIP and DIP will be moved to a backup director. These two IPs then
+cannot be the primary IP on the director NIC(s),
+<emphasis>i.e.</emphasis>
+they must be secondary IPs (or in the old days were called aliases).
+The primary IP's on the director NIC(s) can be anything compatible
+with the network.
+</para>
+
+<para>
+Any setup procedure (including the configure script) will assume
+that you have already setup all IPs and network connections, apart
+from the VIP,DIP: <emphasis>i.e.</emphasis>
+setup RIP1..n, the primary IPs on the director NIC(s)
+and the DIRECTOR_GW/SERVER_GW and that the link layer joining these
+IPs is functioning. The configure script will setup the VIP, DIP
+(0.9.x will set them up on aliases, hopefully later versions will
+set them up on secondary IPs).
+</para>
+
+<para>
+In a test setup, with all machines in the same room, a router
+(in the <link linkend="lvs_ascii">ascii diagram</link>)
+will not be present and the client box will have
+the IPs for the DIRECTOR_GW or the SERVER_GW.
+</para>
+
+<para>
+You will need a minimum of 3 machines (1 client,
+1 director, 1 realserver). If you have 4 machines
+(<emphasis>i.e.</emphasis>
+2 realservers), then you can see loadbalancing (the connection
+from the client to the LVS being sent to one realserver,
+then the other).
+</para>
+
+<para>
+You can setup an LVS with 2 machines (1 client, 1 director)
+using the
+<ulink url="http://www.austintek.com/LVS/LVS-HOWTO/HOWTO/LVS-HOWTO.localnode.html">
+localnode feature of LVS</ulink>,
+with the director also functioning as a realserver, but
+this doesn't demonstrate how to scale up an LVS farm,
+and you may have difficulty telling whether it is working
+if you're new to LVS.
+</para>
+
+<para>
+The director connects to all boxes. If you have only
+one keyboard and monitor, you can set everything
+up from the director.
+</para>
+
+<para>
+You need
+</para>
+
+<itemizedlist>
+	<listitem>
+	<emphasis role="bold">Client</emphasis>
+	<para>
+Any machine, any OS,
+with a telnet client and/or an http client.
+(<emphasis>e.g.</emphasis> netscape, lynx, IE).
+(I used a Mac client for my first LVS).
+	</para>
+	</listitem>
+
+	<listitem>
+	<emphasis role="bold">Director:</emphasis>
+
+	<para>
+machine running Linux kernel 2.2.x (x&gt;=14) or 2.4.x
+patched with ipvs. If you're starting from scratch, use
+a 2.4.x kernel, as <command>ipchains</command> 
+(as is used in 2.2.x kernels) is no
+longer being developed, having been replaced by <command>iptables</command>.
+	</para>
+
+	<para>
+For a test, this machine doesn't need to be powerful -
+any 486 machine on 10Mpbs ethernet is fine. In real life
+a 75MHz Pentium I is capable of delivering 50Mbps of packets
+using 100Mbps ethernet. In this case the network layer
+(33MHz bus) is the bottleneck and the CPU is doing little
+work. Compare this throughput to the capacity of a
+T-1 connection (1.5Mbps) and you can see that for low
+capacity networks, the redundancy of the LVS is the
+most useful feature. It's not till the network layer
+is 1Gbps that CPU resources become limiting on 300MHz
+PII's.
+	</para>
+	</listitem>
+
+	<listitem>
+	<emphasis role="bold">Realserver(s):</emphasis>
+	<para>
+These are the machines offering the service of interest
+(here telnet and/or http). In production environments these
+can have any operating system, but for convenience I
+will discuss the case where they are linux machines
+with kernel &gt;=2.2.14. (Support for earlier kernels
+has been dropped from the HOWTO).
+	</para>
+
+	<para>
+The director can forward packets by 3 methods. The
+OS for the realservers can be
+	</para>
+	<itemizedlist>
+		<listitem>
+	LVS-NAT - any machine, any OS, running some service of interest
+(eg httpd, ftpd, telnetd, smtp, nntp, dns, daytime ...). The
+realserver just has to have a tcpip stack - even a network printer will do.
+		</listitem>
+		<listitem>
+	LVS-DR  - OS known to work are listed in the
+<ulink url="http://www.austintek.com/LVS/LVS-HOWTO/HOWTO/LVS-HOWTO.LVS-DR.html">
+HOWTO</ulink>: almost all unices and Microsoft OS.
+		</listitem>
+		<listitem>
+LVS-Tun - realserver needs to run an OS that can tunnel
+(only Linux so far).
+		</listitem>
+	</itemizedlist>
+	</listitem>
+</itemizedlist>	
+
+	<section id="link_layer">
+	<title>Link layer</title>
+	<para>
+Must be ethernet, can be coax or twisted pair with a hub or switch. 
+Only 10Mbps ethernet is needed for a demonstration.
+(ATM doesn't work, at least yet, see the
+<ulink url="http://www.austintek.com/LVS/LVS-HOWTO/HOWTO/LVS-HOWTO.arp_problem.html#ATM">HOWTO</ulink>).
+	</para>
+		<section id="number_networks">
+		<title>Choose number of networks</title>
+		<para>
+There are two logical networks to consider.
+		</para>
+		<itemizedlist>
+			<listitem>
+<emphasis role="bold">VIP</emphasis>:
+The network that the director's VIP is on. 
+The client connects to the the VIP 
+(and must be able to route to it). 
+For a LVS webserver, the VIP will be a public, routable IP.
+If the LVS is local, then the VIP will be in one of your
+own networks (<emphasis>e.g.</emphasis> a private network).
+In the examples here, the VIP is on a private network,
+for convenience of testing. 
+In production, the VIP will usually be a public IP.
+			</listitem>
+			<listitem>
+<emphasis role="bold">RIP</emphasis>:
+The network that the realservers are on.
+In general these will be private IPs, since
+the client doesn't connect to the realservers
+directly and doesn't need to know that the 
+realservers even exist (the client only
+thinks there is one machine at the IP of the VIP). 
+			</listitem>
+		</itemizedlist>
+		<para>
+If the client(s) are on the same network as
+the realservers, then the two logical networks can be
+collapsed into one network.
+		</para>
+		<para>
+		<note>
+The VIP is usually on an ethernet device (<emphasis>e.g.</emphasis> eth0).
+However <emphasis>dec (at) rm-f (dot) net</emphasis> 01 Jun 2002
+put it on lo and the LVS worked just fine.
+		</note>
+		</para>
+		</section>
+		<section id="number_nics">
+		<title>Choose number of NICs on director</title>
+		<para>
+The number of networks (1 or 2) is a separate matter from the number
+of NICs. A NIC can have multiple IPs and be on multiple networks.
+You can have 1 NIC on the director with a 2 network LVS.
+		</para>
+		<para>
+For an initial LVS-DR setup, you only need 1 NIC on the director.
+For an initial LVS-NAT setup, you need 2 NICs on the director
+(to use one NIC with LVS-NAT, see
+<ulink url="http://www.austintek.com/LVS/LVS-HOWTO/HOWTO/LVS-HOWTO.LVS-NAT.html#one_network">
+One Network LVS-NAT</ulink>).
+Having 2 NICs on the director separates outside and inside
+packets, simplifying filter rules and security.
+100Mbps NICs are cheap and for production,
+you can have as many NICs as you can fit into your
+motherboard (there are some nice quad NICs, I use the
+D Link quad tulip on my director).
+The packet throughput will be limited by the PCI bus/tcpip stack
+(400Mbps for mobos in 2000) - <emphasis>i.e.</emphasis> 4 NICs.
+The director could have a NIC for each realserver even
+if each NIC is not being used at full speed.
+Increasing the number of NICs will increase throughput as
+long as something else doesn't become rate limiting, eg the CPU
+speed or the PCI bus.
+		</para>
+		<para>
+The <link linkend="configure_script">configure script</link>
+will handle 1 or 2 NICs on the director.
+In the 1 NIC case, the NIC connects to both the outside world and to
+the realserver network. In the 2 NIC case, these two networks
+are physically separated, one connecting to the outside world,
+and the other connecting to the realservers.
+		</para>
+		</section>
+		<section id="labelling_of_NICs">
+		<title><filename>nameif</filename> Change names of NICS eth0&lt;-&gt;eth1</title>
+		<para>
+If you need to exchange the names of two NICs (<emphasis>e.g.</emphasis>
+two NICs on a mobo)..
+		</para>
+		<para>
+Peter Mueller <emphasis>pmueller (at) sidestep (dot) com</emphasis> 03 Dec 2004 
+		</para>
+		<para>
+I just saw on another mailing list about a tool called nameif. 
+		</para>
+		<blockquote>
+nameif:  renames network interfaces based on mac addresses.
+       When no arguments are given /etc/mactab is read. Each line
+       of  it  contains  an  interface  name  and  a Ethernet MAC
+       address. Comments are allowed starting with #.   Otherwise
+       the  interfaces  specified  on  the  command line are pro-
+       cessed.  nameif looks for the interface with the given MAC
+       address and renames it to the name given.
+		</blockquote>
+		<para>
+Jacob Coby <emphasis>jcoby (at) listingbook (dot) com</emphasis> 03 Dec 2004 
+		</para>
+		<para>
+I just looked at the source for <filename>ifup</filename>, and it calls <filename>nameif</filename>
+		</para>
+<programlisting><![CDATA[
+if [ -n "${HWADDR}" ]; then
+     FOUNDMACADDR=`LC_ALL= LANG= ip -o link show ${REALDEVICE} | \
+         sed 's/.*link\/ether \([[:alnum:]:]*\).*/\1/'`
+     if [ "${FOUNDMACADDR}" != "${HWADDR}" ]; then
+         /sbin/nameif "${REALDEVICE}" "${HWADDR}" || {
+            echo $"Device ${DEVICE} has different MAC address than 
+expected, ignoring."
+            exit 1
+         }
+     fi
+fi
+]]></programlisting>
+		<para>
+Looks like the HWADDR directive will work for me if I reboot the 
+machine.  Thanks Peter, and secroft@micron.com!
+		</para>
+		</section>
+	</section>
+
+	<section id="gotchas">
+	<title>Gotchas: you need an outside client (the director and realservers can't access the virtual service)</title>
+	<para>
+To set up and test/run LVS, you need a minimum of 3 machines: client, director, realserver(s).
+	</para>
+	<para>
+From the outside, the LVS functions as one machine. 
+The client cannot be one of the machines in the LVS (the director, or realserver).
+You need an outside client.
+If you try to access an LVS
+controlled service (eg http, smtp, telnet) from any of the machines in
+the LVS; access from the director will hang, access from a
+realserver will connect to the service locally, bypassing the LVS.
+	</para>
+	<para>
+For limited conditions, people have found ways around this restriction.
+	</para>
+	<itemizedlist>
+		<listitem>
+Apr 2003:
+Jacob Rief has figured out
+<ulink url="http://www.austintek.com/LVS/LVS-HOWTO/HOWTO/LVS-HOWTO.LVS-NAT.html#clients_on_LVS-NAT_realserver_contacting_services_on_VIP">
+how to have a realserver be a client with LVS-NAT</ulink>.
+		</listitem>
+		<listitem>
+May 2004:
+Joshua Goodall has figured out
+<ulink url="http://www.austintek.com/LVS/LVS-HOWTO/HOWTO/LVS-HOWTO.realserver_director_as_client.html#director_as_client_in_LVS-DR">
+how to have a director be a client with LVS-DR</ulink>.
+		</listitem>
+		<listitem>
+Ludo has 
+<ulink url="http://www.austintek.com/LVS/LVS-HOWTO/HOWTO/LVS-HOWTO.LVS-DR.html#realserver_as_client_in_LVS-DR">
+proposed a scheme to allow an LVS-DR realserver to be an LVS-DR client
+</ulink>
+(http://www.austintek.com/LVS/LVS-HOWTO/HOWTO/LVS-HOWTO.LVS-DR.html#realserver_as_client_in_LVS-DR).
+		</listitem>
+	</itemizedlist>
+	</section>
+	<section id="test_with_telnet">
+	<title>Initial service for testing should be telnet (or netcat)</title>
+	<para>All testing of your LVS should be done with simple services
+(<emphasis>telnet, http</emphasis>).
+Telnet has
+	</para>
+	<itemizedlist>
+		<listitem>
+a simple client (available on all OSs)
+		</listitem>
+		<listitem>
+a simple protocol (one port)
+		</listitem>
+		<listitem>
+exchanges are all ascii (can be watched with tcpdump)
+		</listitem>
+		<listitem>
+non-persistent connection (you can test round robin scheduling)
+		</listitem>
+		<listitem>
+telnetd usually listens to all IP's on the server
+(<emphasis>i.e.</emphasis> to 0.0.0.0) at least under inetd
+		</listitem>
+		<listitem>
+when you get a connection,
+you'll see an entry in the ActConn column of the output of ipvsadm.
+		</listitem>
+	</itemizedlist>
+	<para>
+For security reasons, you'll be turning off telnet later, but
+whenever you're testing your LVS or your new service, always
+look to see if telnet works if you're having trouble.
+If telnet is not being forwarded by LVS,
+then you should fix this first.
+	</para>
+	<para>
+	Another useful client is
+<ulink url="http://www.austintek.com/LVS/LVS-HOWTO/HOWTO/LVS-HOWTO.services.multi-port.html#netcat">
+netcat</ulink>
+or its replacement, phatcat.
+	</para>
+	</section>
+	<section id="filter_rules">
+	<title>Test without filter (iptables) rules</title>
+	<para>
+You don't need them to set up a standard LVS. 
+You can add them after you get the LVS working.
+They usually stop the LVS working and result long exchanges and a great
+waste of time on the mailing list.
+	</para>
+	<para>
+Somsak Sriprayoonsakul <emphasis>somsaks (at) gmail (dot) com</emphasis>
+06 Feb 2006
+	</para>
+	<blockquote>
+The problem has been solved. It's something related to iptables. 
+Stopping iptables on director and the connection rate goes from 200 to 
+Nx2000, where N is the number of real server. After that, I tried to 
+figure out which iptables rules conflict with ipvs and found that it's 
+default argument generated from system-config-securitylevel that cause 
+this. Replace "-m state --state NEW -m tcp -p tcp --dport 80" with just 
+"-m tcp -p tcp --dport 80" make everything works perfectly.
+	</blockquote>
+	<para>
+Ratz
+	</para>
+	<para>
+It's not a conflict, it's the connection tracking core which is
+extremely slow. There's ongoing effort from the netfilter people to
+improve this state.
+If you want
+high performance load balancing, do _not_ use netfilter; especially the
+connection tracking. It just does not scale. Simply loading ip_conntrack
+into the kernel makes your packet rate drop by 60 kpps on a 1Gbit/s
+connection.
+	</para>
+	<para>
+unknown
+	</para>
+	<blockquote>
+If it can help, here is a small document named "netfilter conntrack
+performance tweaking" :
+http://www.wallfire.org/misc/netfilter_conntrack_perf.txt
+	</blockquote>
+	<para>
+Ratz
+	</para>
+	<para>
+No, I'm afraid it does not help ;). A conntrack entry is at least 192
+bytes. If I have 800kpps traffic flow and 5000 rules, even Herve's
+tuning tips are not helping anymore. I've seen some improvements
+regarding RCU conversion lately and I definitely need to redo my tests
+with a recent 2.6.x kernel, however I have little hope regarding
+throughput with ip_conntrack.
+	</para>
+	<para>
+Graeme Fowler <emphasis>graeme (at) graemef (dot) net</emphasis> 06 Feb 2006
+	</para>
+	<para>
+That's because in DR mode the connection state as seen by the director
+never reaches ESTABLISHED - in the majority of cases, the packets
+returning from realserver to client do not go via the director.
+Your new rule ignores the connection state and simply processes packets
+destined for port 80 regardless. This is what you want, as you've seen.
+	</para>
+	</section>
+	<section id="ip_aliases">
+	<title>ip aliases</title>
+	<para>
+Since the 2.0.x kernels, you have been able to put multiple IPs onto
+an ethernet device (<emphasis>e.g.</emphasis> lo, eth0) with ip aliases
+(<emphasis>e.g.</emphasis> lo:0, eth0:1).
+Starting with the 2.4.x kernels, ip aliases are deprecated, although
+still work. 
+It seems with the 2.6.x kernels, that ip aliases no longer
+work (there's some conflict here - the configure script works with 2.6.x it seems)
+and you have to use the <filename>iproute2</filename> tools which acheive the
+same functionality as ip aliases by using primary and secondary addresses.
+This documentation is written for ip aliases.
+Be aware that eventually, you'll have to substitute the iproute2
+commands for the ip alias commands written here.
+	</para>
+	</section>
+
+</section>
+
+<section id="software">
+<title>Software </title>
+	<section id="compiler">
+	<title>Compiler</title>
+	<para>
+Wensong is using egcs-2.91.66 on RedHat 6.2 and gcc-2.96 on RedHat 7.3.
+	</para>
+	<para>
+May 2003 - I have had a lot of trouble with newer kernels and gcc-3.x.
+Kernels build but don't work properly (on one of my machines, the scsi, and
+networking don't work when I turn on SMP). The number of parameters
+in ip_select_ident has changed leading to compile failures (the new
+parameter has the value '0', I just deleted it - it compiled but
+I don't know if the code will bight me now). I also find that
+some packages won't compile with gcc-3.3.
+	</para>
+	<para>
+Feb 2004 - whatever the problems were, they seem to have gone now.
+Apr 2004 - seems that gcc-2.95.3 is still the recommended compiler
+for kernels. Use others at your own risk.
+	</para>
+	</section>
+	<section id="fresh_kernel">
+	<title>Use the standard kernel</title>
+	<para>
+You need the standard kernel for both the director and the realservers.
+The standard kernel is obtainable from the
+<ulink url="ftp://ftp.kernel.org/pub/linux/kernel/">kernel ftp site</ulink>
+(ftp://ftp.kernel.org/pub/linux/kernel/).
+	</para>
+	<para>
+If you're using a market enhanced version of the kernel
+(<emphasis>i.e.</emphasis> from a Linux distribution), 
+it will likely <emphasis role="bold">not</emphasis> patch correctly with LVS.
+The Redhat kernel has LVS patches pre-applied, 
+with a version which will be old
+by the time you get to talk to us.
+SuSE (May 2003) is doing the same thing.
+If you can get LVS to work with the standard kernel, 
+but not with your distribution, 
+then we may know what the problem is,
+but it would be better if you contacted your distro - they need the feedback,
+not us.
+If you're really interested in getting the kernel in your distro working with
+LVS, you can do that after you've done it with the standard kernel.
+If you come up on the mailing list with a problem and you're using
+a market enhanced version of the kernel, make sure you tell us
+that you're using a non-standard kernel.
+	</para>
+	</section>
+	<section id="ifup">
+	<title>Use standard utilities (not ifup)</title>
+	<para>
+Use standard utilities, <emphasis>e.g.</emphasis> 
+the <filename>iproute2</filename> tools
+(or the older <command>ifconfig/route</command> commands, 
+which really only work well for a leaf node with one IP).
+		<note>
+We've been setting up LVSs since the first days with <command>ifconfig</command>
+and ip_aliases, but ip_aliases are not compatible with most
+current networking tools, so be careful if you're using 
+<command>ifconfig</command>.
+		</note>
+	</para>
+	<para>
+People find that their LVS doesn't work if they set it up with 
+RedHat's <command>ifup</command>
+(see the <ulink url="http://marc.theaimsgroup.com/?l=linux-virtual-server&amp;m=108132810628417&amp;w=2">LVS archives</ulink>).
+The problem is that <command>ifup</command>
+runs <command>arping</command> which it has no business doing,
+and which hoses your LVS setup.
+Other market enhanced networking tools add strange routes.
+If you want to outsmart yourself by using commands 
+that are designed to enhance the uniqueness of a distro in the market place, 
+rather than to do the job that needs to be done,
+then you fully deserve all the trouble you get into,
+but we on the mailing list have to figure out how you broke 
+your setup and we assume that you're using the normal utilities.
+We aren't happy to find out after many exchanges that you're using 
+deliberately broken tools written by people who don't understand networking.
+You may as well be running Windows.
+	</para>
+	<para>
+hapless user
+	</para>
+	<blockquote>
+		<para>
+Before ran the script, I can connect to all my realservers, but after running it
+I lost connecion and the only difference in the route table is this:
+		</para>
+<programlisting><![CDATA[
+$VIP dev lo  scope link  src $VIP
+]]></programlisting>
+	</blockquote>
+	<para>
+Francois JEANMOUGIN <emphasis>Francois (dot) JEANMOUGIN (at) 123multimedia (dot) com</emphasis>
+16 Jan 2004 
+and Apr 07, 2004
+	</para>
+	<para>
+You should not add any lo route.
+Never use ifup to mount noarp interfaces. 
+In the ifup script, you will find an arping command. 
+If this is the first realserver you are configuring, 
+this is not really a problem, 
+but if you try to add a realserver to an existing pool of servers, 
+this will mess all the LVS routing 
+structure by sending an arp announce.
+	</para>
+	<para>
+Christopher DeMarco <emphasis>cdemarco (at) md (dot) com (dot) my</emphasis> 07 Jul 2004
+	</para>
+	<para>
+RedHat uses <command>ifup</command> at startup.
+	</para>
+<programlisting><![CDATA[
+[08:55:05][root@sunset root]# cat /etc/redhat-release 
+Red Hat Enterprise Linux WS release 3 (Taroon Update 2)
+[08:55:14][root@sunset root]# grep  -n ifup /etc/init.d/network 
+73:     action $"Bringing up loopback interface: " ./ifup ifcfg-lo
+137:            action $"Bringing up interface $i: " ./ifup $i boot
+148:            action $"Bringing up interface $i: " ./ifup $i boot
+]]></programlisting>
+	<para>
+Why not just comment out the bits of 
+<command>ifup</command> that invoke arp(8) and arping(8)? 
+It's not ideal insofar as any system upgrades will need to
+re-clean the <command>ifup</command> code, 
+but to my mind it's the least invasive procedure. 
+Re-writing clean init scripts will break the entire RH
+point-n-drool configurization functionality that users may want to use.
+My understanding is that the manipulation of arp caches is the single
+impediment to using RH products with LVS, or are there others?
+	</para>
+	<para>
+Horms 
+	</para>
+	<para>
+Yes, that is certainly what I would do.
+Perhaps RH could be encouraged (through a bug report on bugzilla)
+to make this a configuration option.
+RH is the only distribution that I am aware of that does this.
+But it seems reasonable to think that others might do the same.
+	</para>
+	</section>
+	<section id="packages">
+	<title>getting files in packages</title>
+	<para>
+If you want files in a package format for some distribution,
+in general you'll have to go to that distributor. 
+Sometimes people on the mailing list package up the files
+for general use.
+LVS is a spare time activity for some of us. 
+We're happy to generate files that everyone can use,
+but there's not much point in generating packages for
+the myriad of distributions, when we can't test them
+and we don't even know if anyone will use them.
+	</para>
+	<para>
+My personal view is that unless you can compile the code, 
+you may as well be running Windows. 
+I know that some of us are subject to management who wants
+code packaged from an approved distributor, and are prepared
+to pay money for it. We aren't set up to do that. 
+	</para>
+	</section>
+	<section id="getting_files_director">
+	<title>Getting Files: Director</title>
+	<para>
+Software is available at
+<ulink url="http://www.linuxvirtualserver.org/software/ipvs.html">
+http://www.linuxvirtualserver.org/software/ipvs.html</ulink>.
+	</para>
+	<para>
+The director code is well tested on Intel CPUs. 
+As well several people are running on Alpha hardware. 
+It is expected to work on any hardware which runs Linux.
+	</para>
+		<section id="director_patch">
+		<title>Kernel Patch</title>
+		<para>
+You need a kernel patched with the ip_vs code
+		</para>
+		<itemizedlist>
+			<listitem>
+				<para>
+2.6.x kernels: 
+				</para>
+				<para>
+the kernel (from ftp.kernel.org) is already patched
+with the ip_vs code.
+				</para>
+			</listitem>
+			<listitem>
+				<para>
+2.4.x kernels: 
+				</para>
+				<para>
+for 2.4.23 and later, the kernel (from ftp.kernel.org) is
+already patched with the ip_vs code.
+				</para>
+				<note>
+Do not run <command>make patchkernel</command> on the 2.4.23
+kernel (or later). 
+These kernels are already patched with LVS. 
+Despite its name <command>make patchkernel</command> is
+replacing files, rather than patching them and the command
+will succeed but produce a kernel which will not compile.
+				</note>
+				<note>
+2.4.23 has a root exploit problem which has been fixed for 2.4.24.
+2.4.25 had a fix for a root exploit too. 
+It's probably best to skip 2.4.23/24 for production systems.
+				</note>
+				<para>
+for 2.4.22 and earlier, you need to download the ip_vs patch for
+your kernel version and patch the kernel.
+				</para>
+			</listitem>
+			<listitem>
+				<para>
+2.2.x kernels:
+				</para>
+				<para>
+all versions require you to download the ip_vs patch for your
+kernel version and patch the kernel.
+				</para>
+			</listitem>
+		</itemizedlist>
+		<para>
+In all cases, when you compile your kernel, 
+you have to turn on the ip_vs option in 
+<command>make configure</command> 
+(Networking options -&gt; IP: Virtual Server Configuration).
+If you don't know what you're doing, compile all options as modules and
+don't change the connection table size 
+(see further down for more details on compile options).
+		</para>
+		<blockquote>
+			<para>
+Horms 14 Nov 2003
+			</para>
+			<para>
+Generally each release is made in two forms
+(take your pick for kernel build style).
+			</para>
+			<itemizedlist>
+				<listitem>
+A tar ball which you can use to build
+LVS outside or inside the kernel tree.
+				</listitem>
+				<listitem>
+And a patch which can only be used
+to build LVS inside the kernel tree.
+				</listitem>
+			</itemizedlist>
+			<para>
+For 2.4.22, patch <filename>linux-2.4.21-ipvs-1.0.11.patch.gz</filename>
+can be applied.
+Unless you've got good reason to use an older kernel,
+then use 2.4.23 or later with LVS code already in it.
+			</para>
+		</blockquote>
+		</section>
+		<section id="user_level_interface">
+		<title>ipvsadm: the user level interface to ip_vs</title>
+		<para>
+You control and configure the kernel code with <command>ipvsadm</command>
+		</para>
+		<itemizedlist>
+			<listitem>
+				<para>
+If you have a kernel prepatched with ip_vs code:  
+download <filename>ipvsadm</filename> from
+<ulink url="http://www.linuxvirtualserver.org/software/ipvs.html">
+http://www.linuxvirtualserver.org/software/ipvs.html</ulink>.
+				</para>
+				<para>
+				<note>
+Make sure you get the <filename>ipvsadm</filename> for your kernel series.
+The various kernel verions (2.2.x, 2.4.x, 2.6.x) require different 
+versions of <filename>ipvsadm</filename>. 
+However there is only one numbering series for versions of
+<filename>ipvsadm</filename>.
+You can't tell the target kernel from the ipvsadm verion number 
+(<emphasis>e.g.</emphasis> <filename>ipvsadm-1.24.tar.gz</filename> 
+is for 2.6 kernels, while 
+<filename>ipvsadm-1.21.tar.gz</filename> 
+is for the 2.4 kernels). 
+If you just get the latest <filename>ipvsadm</filename> (Jan 2004 is v1.24)
+it won't work on 2.4 kernels. 
+				</note>
+				</para>
+			</listitem>
+			<listitem>
+				<para>
+If you are using an ip_vs patch to patch a kernel:
+<filename>ipvsadm</filename> will be included with the patch.
+				</para>
+				<note>
+Compile <filename>ipvsadm</filename> after you've compiled
+and booted to your new ip_vs kernel, so that <filename>ipvsadm</filename>
+is compiled against the correct version of the kernel header files.
+This will require you to remember that after you boot to your
+new kernel, you still have one more step, of compiling and installing
+<filename>ipvsadm</filename>.
+
+				</note>
+			</listitem>
+		</itemizedlist>	
+		</section>
+		<section id="upgrading">
+		<title>Upgrading LVS</title>
+		<para>
+The only way is to compile a new kernel, reboot, then compile/install the
+matching ipvsadm, as if you were doing an install from scratch.
+You can't upgrade in place, you have to bring the director down.
+		</para>
+		<para>I use the <command>rc.system_map</command> 
+script (comes with the
+<link linkend="configure_script">configure_script</link>)
+to make sure that I have the correct versions of ipvsadm, 
+kernel and System.map files
+working together, when I'm testing multiple versions of LVS
+(<emphasis>e.g.</emphasis> a 2.2 and 2.4 version).
+		</para>
+		<para>
+Horms 01 Feb 2005
+		</para>
+		<para>
+LVS is part of the kernel. You can compile it as modules or into the
+kernel itself. In the case of the former, you can change these modules
+at any time, though LVS gets reset and any establised connections will
+be broken - though this can be mitigated by synchonising to a backup
+linux director. However, if you need to upgrade some other part of the
+kernel, which is more common than just upgrading LVS, then you need
+to reboot. This includes a situation where updating LVS relies on
+a change somewhere else in the kernel.
+		</para>
+		</section>
+	</section>
+	<section id="arp_problem">
+	<title>Realserver OS by forwarding method</title>
+	<para>	
+Realservers can have almost any OS. Here they are listed by forwarding method
+	</para>
+	<itemizedlist>
+		<listitem>
+LVS-NAT - any OS. Since only one IP is needed, anything with a tcpip stack
+is OK. You can use a networked printer as a realserver.
+		</listitem>
+		<listitem>	
+LVS-DR - most OS's (all expected to succumb eventually).
+		</listitem>
+		<listitem>
+LVS-Tun - only linux. You need the tunl0 device to decapsulate the
+ipip packets (turn on in the kernel configuration
+under &quot;Network options&quot;). 
+Windows had tunneling for a short while in
+their later versions, but then dropped it.
+		</listitem>
+	</itemizedlist>
+	<para>
+The problem for realservers is handling the arp problem for LVS-DR and LVS-Tun.
+The problem arises because all machines (director, realservers) have
+the VIP and only the director can reply 
+to arp requests for the MAC address of the VIP, if the LVS is to work.
+Ratz has assembled instructions for setting up
+<ulink url="http://www.austintek.com/LVS/LVS-HOWTO/HOWTO/LVS-HOWTO.non-linux_realservers.html">
+realservers using non Linux OS</ulink>
+(http://www.austintek.com/LVS/LVS-HOWTO/HOWTO/LVS-HOWTO.non-linux_realservers.html).
+All the standard unices (except Linux in 2.0 kernels and later, and HPUX)
+honour the <filename>-noarp</filename> flag to <command>ifconfig</command>,
+so handling the arp problem is trivial. For linux you need to apply 
+software to the realserver kernel, or use routing tricks (Lars method).
+	</para>
+	</section>
+	<section id="do_I_need_to_handle_the_arp_problem">
+	<title>Realservers: Do you need to handle the arp problem?</title>
+	<itemizedlist>
+		<listitem>
+LVS-NAT: no arp problem (the realservers don't have the VIP) 
+		</listitem>
+		<listitem>
+For realservers with LVS-DR (and possibly LVS-Tun),
+you'll need to handle the ARP problem.
+		</listitem>
+	</itemizedlist>
+	<para>
+The theory for the arp problem can be skipped on a first read.
+Eventually you'll need to understand this to set up your own configuration of LVS. 
+Here's the summary:
+	</para>
+<programlisting>
+<![CDATA[
+IF   (
+        (you are using LVS-DR or LVS-Tun on the director)
+        AND
+        (you are running a Linux 2.2.x, 2.4.x, 2.6.x kernel on a realserver)
+        AND
+        (
+                the VIP on the realserver is on an ethernet device eg lo:0, tunl0:0
+                i.e. packets to the VIP are not being accepted by transparent proxy
+        )
+        AND
+        (
+                the realservers can answer arp requests from
+                the client/router (the realservers are on the same
+                piece of wire|network|segment as the director)
+        )
+     )
+THEN
+     {
+     YOU MUST HANDLE THE ARP PROBLEM
+     }
+FI
+]]>
+</programlisting>
+	<para>
+In general you'll have to handle the arp problem.
+	</para>
+	</section>
+	<section id="arp_problem_by_kernel_version">
+	<title>Realservers: arp problem by Linux kernel version</title>
+	<itemizedlist>
+		<listitem>
+<emphasis role="bold">2.0.x</emphasis>:
+honours <filename>-noarp</filename> flag to <command>ifconfig</command>.
+No kernel patches needed.
+Use the NOARP option in ifconfig to setup VIP on lo:0 
+(as for other unices)
+		</listitem>
+		<listitem>
+			<para>
+<emphasis role="bold">2.2.x</emphasis>: 
+does not honour <filename>-noarp</filename> flag.
+			</para>
+			<para>
+Julian's <filename>hidden</filename> patch is in the standard kernels
+for 2.2.x (where x&gt;=12). 
+You do not need any kernel patches.
+			</para>
+			<para>
+You hide the device from arp calls
+by bit twiddling the <filename>/proc</filename> filesystem. 
+This gives the same effect as configuring the device with the
+<filename>-noarp</filename> option.
+			</para>
+		</listitem>
+		<listitem>
+			<para>
+<emphasis role="bold">2.4.x</emphasis>: does not honour the 
+<filename>-noarp</filename> flag.
+			</para>
+			<para>
+There are <emphasis role="bold">no</emphasis> patches in the
+kernel to handle the arp problem.
+			</para>
+			<para>
+You can patch the kernel with Julian's hidden patch
+or load Maurizio's <filename>noarp</filename> module. 
+For 2.4.26 and later, Julian has another patch (see 2.6.x).
+			</para>
+		</listitem>
+		<listitem>
+			<para>
+<emphasis role="bold">2.6.x</emphasis>: does not honour the 
+<filename>-noarp</filename> flag.
+			</para>
+			<para>
+There are <emphasis role="bold">no</emphasis> patches in the
+kernel to handle the arp problem.
+			</para>
+			<para>
+For 2.6.x Julian has new code
+			</para>
+			<para>
+Julian Anastasov <emphasis>ja (at) ssi (dot) bg</emphasis> 25 Feb 2004
+			</para>
+			<blockquote>
+2.4.26pre and 2.6.4pre
+will come with 2 new device flags for tuning the ARP stack:
+<filename>arp_announce</filename> and <filename>arp_ignore</filename>. 
+All IPVS like setups can use
+arp_announce=2 and arp_ignore=1/2/3 to solve the "ARP problem" with
+DR/TUN setups. These flags are going to replace the "hidden"
+functionality which does not work well for directors when they are 
+changing their role between master/slave for a particular VIP.
+The risk is that other hosts can probe for VIP using unicast packets
+which the hidden flag always replies. I'll continue to support the
+hidden flag for 2.4 and 2.6 to help existing setups but switching
+to the new device flags (or other solutions) is recommended.
+			</blockquote>
+		</listitem>
+	</itemizedlist>
+	</section>
+	<section id="method_arp_problem">
+	<title>Realservers: Methods of handling the arp problem</title>
+	<para>
+All methods of handling the arp problem work, have about the same
+performance (throughput, latency) and are about equally easy/difficult
+to setup.
+	</para>
+	<para>
+The methods in current use for handling the arp problem 
+	</para>
+	<itemizedlist>
+		<listitem>
+			<para>
+Julian's hidden patch
+available at
+<ulink url="http://www.ssi.bg/~ja/">
+Julian's patches and software page</ulink>.
+This stops replies to arp requests by device (<emphasis>e.g.</emphasis>
+lo, where all IPs on the device are hidden).
+This is the oldest of the methods in use and so it most familiar
+to people who've been using LVS for long time.
+			</para>
+			<para>
+As of late 2001, both the hidden patch and the ipvs
+patch can be applied simultaneously to the kernel,
+allowing you to use the same kernel
+for the director and realservers.
+The part of the kernel being patched doesn't change much with kernel
+versions, so the hidden patch against 2.4.5 is still OK against 2.4.19pre4.
+			</para>
+			<para>
+You patch by doing
+			</para>
+<programlisting>
+<![CDATA[
+realserver:/usr/src/linux# patch -p1 <../arch/hidden-2.4.4-1.diff
+]]>
+</programlisting>
+		</listitem>
+		<listitem>
+<ulink url="http://www.austintek.com/LVS/LVS-HOWTO/HOWTO/LVS-HOWTO.arp_problem.html#sartori">
+Maurizio Sartori's noarp module </ulink>.
+(http://www.austintek.com/LVS/LVS-HOWTO/HOWTO/LVS-HOWTO.arp_problem.html#sartori)
+<filename>noarp</filename> module. 
+You don't have to patch the kernel, 
+you just load the module. 
+Maurizio's module acts on the IP, 
+not the device, so you can make the VIP <filename>noarp</filename>
+while letting other IPs on the same device reply to arp requests.
+This is currently (Feb 2004) available for 2.4.x kernels, 
+with a version for 2.6.x expected shortly.
+		</listitem>
+		<listitem>
+<ulink url="http://www.austintek.com/LVS/LVS-HOWTO/HOWTO/LVS-HOWTO.arp_problem.html#arp_filtering">
+Julian's arp filtering</ulink>.
+(http://www.austintek.com/LVS/LVS-HOWTO/HOWTO/LVS-HOWTO.arp_problem.html#arp_filtering)
+Julian has added arp extensions to the iptables filtering rules. 
+This would appear to be the simplest way of handling the problem,
+except that people are wary of writing iptables rules. 
+No-one seems to be using this method.
+		</listitem>
+		<listitem>
+Routing tricks <emphasis>e.g.</emphasis>
+<ulink url="http://www.austintek.com/LVS/LVS-HOWTO/HOWTO/LVS-HOWTO.LVS-DR.html#Lars_method">Lar's method</ulink>.
+		</listitem>
+		<listitem>
+			<para>
+For earlier kernels (2.0.x and for at least early 2.2.x kernels),
+another simple method is to put an extra NIC into the realservers
+for the VIP and not connect it to the network.
+The NIC doesn't handle any packets, it's just a way
+of putting the VIP onto the realserver.
+The NIC can be an old 10Mbps ISA card.
+The cost of some 100Mbps PCI tulip cards now is less than the salary
+you'd pay for the time to recompile a kernel with the hidden patch.
+(Note, 2002: - this doesn't work for 2.4.x kernels).
+			</para>
+			<para>
+There is some dispute (from Ratz and Julian) whether this method 
+should even work (they say it won't). However the results
+of the tests are in 
+<ulink url="http://www.austintek.com/LVS/LVS-HOWTO/HOWTO/LVS-HOWTO.arp_problem.html#vip_devices">HOWTO: the arp problem</ulink>
+(http://www.austintek.com/LVS/LVS-HOWTO/HOWTO/LVS-HOWTO.arp_problem.html#vip_devices)
+if you want to look further.
+This property is probably moot now, since no-one is using these kernels anymore.
+			</para>
+		</listitem>
+	</itemizedlist>
+	</section>
+	<section id="255_4">
+	<title>Why netmask=/32 for the VIP in LVS-DR?</title>
+	<para>
+Horms 29 Oct 2003
+	</para>
+	<para>
+If you are using LVS-DR then the packets that arrive
+on the real servers have the destination IP address set
+to the VIP. So the real servers need some way of accepting
+this traffic as local. One way is to add an interface on
+the loopback device and hide it so it won't answer ARP
+requests. 
+	</para>
+	<para>
+The netmask has to be 255.255.255.255 because
+the loopback interface will answer packets for
+_all_ hosts on any configured interface.
+So 192.168.1.110 with netmask of 255.255.255.0
+will cause the machine to accept packets for
+_all_ addresses in the range 192.168.1.0 - 192.168.1.255,
+which is probably not what you want.
+	</para>
+	<para>
+Josef Pospisil Jul 15, 2005
+	</para>
+	<blockquote>
+Why does the VIP on the realservers need to be on a lo interface and not like 
+on director for example on eth0:05?
+	</blockquote>
+	<para>
+Horms
+	</para>
+	<para>
+You can do that if you would rather, however be careful to
+make sure that the real server does not make arp adverisments for
+the VIP. If you use lo, then this can easily be done using arp_ignore
+and arp_announce. If you want to use eth0, then arptables is
+probably the way to go.
+	</para>
+	</section>
+	<section id="forwarding">
+	<title>Choose LVS Forwarding Type: LVS-NAT, LVS-DR and LVS-Tun</title>
+	<para>
+The realservers must be configured appropriately for the LVS forwarding method.
+To do this you must
+	</para>
+	<itemizedlist>
+		<listitem>
+		<para>
+handle the arp problem.
+		</para>
+		<para>
+For more info see
+<ulink url="http://www.austintek.com/LVS/LVS-HOWTO/HOWTO/LVS-HOWTO.arp_problem.html">
+arp problem</ulink>.
+		</para>
+		</listitem>
+		<listitem>
+set the default gw.
+		<itemizedlist>
+			<listitem>
+LVS-NAT: the DIP
+			</listitem>
+			<listitem>
+				<para>
+LVS-DR, LVS-Tun: a router (anything but the director).
+				</para>
+				<para>
+If you apply 
+<ulink url="http://www.austintek.com/LVS/LVS-HOWTO/HOWTO/LVS-HOWTO.LVS-DR.html#LVS-DR_director_default_gw">
+Julian's martian modification</ulink>
+(http://www.austintek.com/LVS/LVS-HOWTO/HOWTO/LVS-HOWTO.LVS-DR.html#LVS-DR_director_default_gw), you can route packets back through an LVS-DR director.
+You don't want to do this for your first LVS.
+				</para>
+			</listitem>
+		</itemizedlist>
+		</listitem>
+	</itemizedlist>
+	<para>
+The examples below will show how to setup LVS-NAT and LVS-DR on a 1 NIC director.
+	</para>
+	<para>
+If you just want to demonstrate to yourself that you can setup an
+LVS, then LVS-NAT has the advantage that any OS can be used on the
+realservers, and that no modifications are needed for the kernel
+on the realserver(s).
+	</para>
+
+	<para>
+If you have a linux machine with a 2.0.x kernel, then it can be
+used as a realserver for an LVS operating in any mode without any
+modifications.
+	</para>
+
+	<para>
+	Because LVS-NAT was the first mode of LVS developed, it was the
+type first used by people setting an LVS.
+For 2.2.x kernels, LVS-NAT is much more CPU intensive
+than LVS-DR (LVS-NAT requires packet rewritting).
+For 2.4.x kernels LVS-NAT has better performance
+and approaches that of LVS-DR.
+However for a simple test, LVS-NAT only
+requires patching 1 machine (the director) and an unmodified
+machine of any OS for a realservers.
+	</para>
+
+	<para>
+For production LVS-DR is the first choice.
+After a simple test, unless
+you need the features of LVS-NAT (ability to use realservers that
+provide services not found on Linux machines, port remapping,
+realservers with primitive tcpip stacks - <emphasis>e.g.</emphasis> printers, services
+that initiate connect requests such as identd),
+then it would be best to move to LVS-DR.
+	</para>
+
+	<para>
+Here are the constraints for choosing the various flavors of
+LVS: LVS-NAT (network address translation), LVS-Tun (tunnelling)
+and LVS-DR (direct routing).
+	</para>
+
+<programlisting> <![CDATA[
+                       LVS-NAT      LVS-Tun            LVS-DR
+
+realserver OS          any          must tunnel        most
+realserver mods        none         tunl must not arp  lo must not arp
+port remapping         yes          no                 no
+realserver network     private      on internet        local
+                       (remote  or  local)             -
+realserver number      low          high               high
+client connnects to    VIP          VIP                VIP
+realserver default gw  director     own router         own router
+]]> </programlisting>
+
+	<para>
+Until you know which forwarding method to use, choose in this order
+	</para>
+
+	<itemizedlist>
+		<listitem>
+VS-DR default, has high throughput, can be setup on most OS's. The realservers
+must be on the same network as the director (the realservers and director can arp each other).
+		</listitem>
+		<listitem>
+VS-NAT, lower throughput, higher latency. Realserver only needs tcpip stack
+(ie any OS, even a network printer).
+Works for multiple instances of services
+(<emphasis>i.e.</emphasis> multiple copies of demon running on several different ports).
+		</listitem>
+		<listitem>VS-Tun, Linux only realservers. Same throughput as LVS-DR.
+Needed if realserver on different network to director
+(eg in another location).
+		</listitem>
+	</itemizedlist>
+
+	</section>
+
+	<section id="multiple_forwarding_methods">
+	<title>multiple forwarding methods</title>
+
+	<para>
+Although it is not often done, you can set up a director to
+forward services using different forwarding methods at the same
+time. Thus you could have telnet forwarded by LVS-NAT to one
+set of realservers, and http forwarded by LVS-DR to another
+(possibly overlapping) set of realservers.
+	</para>
+	</section>
+
+	<section id="configure_tools">
+	<title>Configure scripts, tools</title>
+	<para>
+There are some tools to help you configure an LVS.
+	</para>
+	<para>
+	<itemizedlist>
+		<listitem>
+Joe wrote <link linkend="configure_script">configure script</link>
+for all LVS types, which does a lot of sanity checking on setup but
+doesn't handle director failover (single director only).
+The configure script will setup <command>mon</command>
+to handle failure of services on realservers.
+		</listitem>
+		<listitem>
+			<para>
+tools which include director failover,
+<emphasis>e.g.</emphasis>
+<ulink url="http://www.ultramonkey.org/">Ultra Monkey</ulink>.
+by Horms, which handles director failover, but has to be setup by hand.
+In Apr 2005, Horms released 
+<ulink url="http://www.ultramonkey.org/download/3">UltraMonkey v3</ulink>
+(http://www.ultramonkey.org/download/3)
+			</para>
+			<itemizedlist>
+				<listitem>
+Connection Syncronisation allows connections to continue even
+    if the active linux-director fails and the stand-by is brought online
+				</listitem>
+				<listitem>
+Native health checking of MySQL servers using ldirectord
+				</listitem>
+				<listitem>
+Improved handling of ARP packets
+				</listitem>
+				<listitem>
+Custom kernel is no longer required (the LVS patches are already in the
+standard distribution kernel and Horms doesn't have to distribute
+his own kernel anymore)
+				</listitem>
+			</itemizedlist>
+		<para>
+According to some survey that Horms read, UltrMonkey is the most often
+used method of setting up an LVS.
+		</para>
+		</listitem>
+		<listitem>
+vrrpd/keepalived by Alexandre Cassen,
+which sets everything up for you
+and is at the
+<ulink url="http://keepalived.sourceforge.net">keepalived</ulink> site.
+It handles director and realserver failure.
+		</listitem>
+		<listitem>
+Sylvain Maugiron <emphasis>sm (at) edatis (dot) net</emphasis> 05 Feb 2003,
+has released a
+<ulink url="http://ipvsadmin.virtux.org">cgi interface</ulink>.
+		</listitem>
+		<listitem>
+Malcolm Turnbull <emphasis>malcolm (dot) turnbull (at) crocus (dot) co (dot) uk </emphasis>
+28 Jan 2003, has written a
+<ulink url="http://www.loadbalancer.org/">php based web interface to lvs/ldirectord</ulink>
+		</listitem>
+		<listitem>
+Per Andreas Buer <emphasis>perbu (at) linpro (dot) no</emphasis> 27 Jan 2003
+has written a CLI-controlled LVS demon
+<ulink url="http://www.linpro.no/projects/lvs-kiss/">lvs-kiss</ulink>
+which uses <command>ipvsadm</command> for load balancing and fail-over.
+		</listitem>
+		<listitem>Horms wrote
+<ulink url="http://www.vergenet.net/linux/lvs-gui/">lvs-gui</ulink>.
+This is from the early days of LVS, only sets up a LVS-DR LVS,
+is no longer being maintained and should not be used for current work.
+		</listitem>
+		<listitem>
+		<para>
+Sylvain Maugiron <emphasis>sm (at) edatis (dot) net</emphasis> 27 Jan 2003
+		</para>
+		<para>
+I've placed my cgi interface to <command>ipvsadm</command> at
+<ulink url="http://ipvsadmin.virtux.org">Virtux</ulink>
+I will try to go on developing this interface.
+		</para>
+		</listitem>
+	</itemizedlist>
+	</para>
+	<para>Unfortunately several of these scripts produce files 
+with the name <filename>rc.lvs</filename>
+(just to make things interesting when reading the mailing list).
+	</para>
+
+	<para>A survey of production LVS's
+(by Lorn Kay <emphasis>lorn_kay (at) hotmail (dot) com</emphasis>, results on the
+<ulink url="http://www.linuxvirtualserver.org/survey/survey_200101.html">
+LVS website</ulink>) showed that 10 out of 19 were setup
+by methods described as "other", ie they didn't use any of the scripts
+on the LVS website. Clearly the above scripts are not regarded as production
+quality by our users.
+	</para>
+		<section id="configure_script">
+		<title>Configure script</title>
+		<para>
+You can set up the LVS by hand with ipvsadm. This is somewhat tedious
+and error prone. While do-able for a single LVS configuration,
+this is not the way to go for setting up lots of different
+LVS configurations.
+		</para>
+		<para>
+The configure script is designed to quickly (so I could do testing)
+setup an LVS with 
+<filename>mon</filename> directed service failover. It's perl
+and writes out a shell script, which you run on all machines
+(it figures out whether it's running on a director or a realserver).
+This means that you don't need perl running on the realservers.
+The current version (0.9.x) does a wide range of checks,
+catching all the errors and deliberately pathological cases I could find
+in the last 2 yrs.
+Elementary checks are done on routing and connectivity
+and the script has always produced a working LVS when no errors
+are reported.
+		</para>
+		<para>
+The configure script is run from the director console
+(or on the director over a connection from the RIP network or
+through an admin NIC that not used in the LVS). 
+tcpip connections through the NIC facing the internet will
+be broken. 
+		</para>
+		<para>
+The configure script is on the
+<ulink url="http://www.linuxvirtualserver.org/software/index.html#configure_script">
+LVS software page</ulink> (down at the bottom).
+This only sets up a single director and cannot handle director failover.
+For production systems you will probably want to use tools that handle
+<ulink url="http://www.austintek.com/LVS/LVS-HOWTO/HOWTO/LVS-HOWTO.failover.html">
+director failover</ulink>.
+		</para>
+		<note>
+		<para>
+the configure script tests and uses the links between all machines -
+the network should be working already.
+You should be able to ping between all machines on the same network.
+You will need NICs configured with all the RIPs, and the SIP and PIP (for
+versions 0.10.x and older) or DIP (0.9.x and earlier).
+		</para>
+		<para>
+I never released v0.10.x.
+		</para>
+		</note>
+		<para>
+The configure script reads a conf file and
+sets up LVS-DR, LVS-NAT, LVS-Tun, with single or multi-NIC machines
+using regular ethernet devices or transparent proxy to accept packets.
+The output is a well commented <filename>rc.lvs</filename> and <filename>rc.mon</filename>
+file to run at bootup (or when you're setting up an LVS).
+		</para>
+		<para>
+The configure script detects the kernel version of the director
+(for old versions of ipvs/kernels) and is run on the director
+to produce the <filename>rc.lvs</filename> file.
+The <filename>rc.lvs</filename> file is then run on the director and then the realservers.
+This allows the <filename>rc.lvs</filename> script to check the
+connections to the now configured director.
+		</para>
+		<para>
+I have the configure files/directory nfs exported to the realservers.
+After running the <filename>rc.lvs</filename> script on the director, 
+I can then run the same <filename>rc.lvs</filename> script from the realservers.
+(After setup, the network connections
+neccessary to export this directory can be removed.)
+Alternately the configure script will copy and execute
+the <filename>rc.lvs</filename> file on the realservers using <command>ssh</command>,
+using the "-i" option
+(to check that this will work run <command>`ssh realserver_name_or_IP hostname`</command> -
+you should get back the hostname of the realserver).
+The <filename>rc.lvs</filename> file knows whether it's running on a
+director or realserver by looking for IPs on the machine it
+is running on and comparing them to the IPs in the conf file.
+		</para>
+		<para>
+The <filename>rc.lvs</filename> script is verbose and reports on its progress.
+Watch for any errors. The script is idempotent
+<emphasis>i.e.</emphasis>-
+you can run the script as many times as you like on the same machine.
+You can copy the <filename>rc.lvs</filename> file from the director to the realservers for running.
+I have the conf files on the director in <filename>/etc/lvs</filename>
+directory (you can have them anywhere)
+which is nfs exported to the same directory on the realservers.
+In this way the <filename>rc.lvs</filename> script on the director can be run by the realservers.
+In a production system, you can umount
+the directories on the realservers after setup.
+Alternately, if you run configure with the -i (install flag),
+the configure script will use ssh to copy the output
+files to the realserver and execute the script on the realserver.
+		</para>
+		<para>
+The configure script has been
+tested with directors on 2.2 and 2.4 kernels.
+It will issue warnings when it encounters a kernel later than
+it knows about.
+These warnings can usually be ignored as ipvs is not expected
+to change its configuration method a whole lot.
+		</para>
+		<para>
+The conf file and the configure script can use either IPs or hostnames
+(from <filename>/etc/hosts</filename>)
+and can use either port numbers (eg 23) or service names (eg telnet)
+(from <filename>/etc/services</filename>).
+Likely additions needed to your <filename>/etc/services</filename> will be
+		</para>
+<programlisting>
+<![CDATA[
+ftp-data        20/tcp
+ssh             22/tcp
+domain          53/tcp  nameserver      dns #the string "dns" needs to be added here
+domain          53/ucp  nameserver      dns #and here
+shell           514/tcp cmd             rsh #add rsh here
+https           443/tcp
+https           443/udp
+printer         515/tcp spooler         lpd #add the string "lpd" here
+nfs             2049/udp        nfs
+mysql           3306/tcp
+mysql           3306/udp
+netpipe         5002/tcp
+]]>
+</programlisting>
+		<para>
+In several instances, a machine will need multiple IPs. You can
+put multiple IP's on a single NIC with IP aliasing (an option
+when building the kernel) - just enter the aliased interface (eg
+eth0:12) for that IP into the *.conf file. (Note: versions of
+the configure script from 0.10.x onward will move to the
+iproute2 tools and will not be using aliases. `ifconfig` and
+`netstat -rn` will not work for networking set up by the
+iproute2 tools - you'll have to use the iproute2 tools only).
+		</para>
+		<para>
+Documentation on the configure script is in perldoc format.
+		</para>
+<programlisting>
+<![CDATA[
+director:/etc/lvs:$ perldoc configure.pl
+]]>
+</programlisting>
+		</section>
+		<section id="configure_2.6">
+		<title>configure script may need help for the 2.6.x kernels</title>
+		<para>
+tito <emphasis>extlists (dot) e-inventa (dot) net</emphasis> 26 May 2004
+		</para>
+		<para>
+I solved the problem of the configure script not being 2.6 ready
+by changing just the rc.lvs_dr script generated by
+configure-lvs, hiding the version of my kernel and also modifying the
+check_function_in_kernel() function.
+The problem with this function was
+that it compares the result of searching with grep -c into System.map
+for ip_vs_init module, with 1, and in my kernel there are two references
+to ip_vs_init (ip_vs_init and ip_vs_init_hash_table)
+		</para>
+
+		<para>
+Neamtu Dan 12 Mar 2006
+		</para>
+		<para>
+I finally did it, I've run the script manually on my 2.6.x machine
+and I found the problem. It wasn't the ethernet aliases as you 
+said, they work fine, it was about the iptables which 
+weren't flushed.
+		</para>
+		</section>
+		<section id="install">
+		<title>Installing the configure script</title>
+		<para>
+The script is perl and requires perl modules not needed in the
+demonstrations here. However the script will not run without them,
+so check that you have the required modules by running
+		</para>
+
+<programlisting>
+<![CDATA[
+$perl -w configure.pl
+]]>
+</programlisting>
+
+		<para>
+If you're missing a perl module (<emphasis>e.g.</emphasis> DNS.pm) you'll get an error message
+like
+		</para>
+
+<programlisting>
+<![CDATA[
+director:/etc/lvs# ./configure lvs_dr.conf.IP.two_NIC_two_network -i
+Can't locate Net/DNS.pm in @INC (@INC contains: /usr/local/lib/perl5/5.6.0/i586-linux /usr/local/lib/perl5/5.6.0 /usr/local/lib/perl5/site_perl/5.6.0/i586-linux /usr/local/lib/perl5/site_perl/5.6.0 /usr/local/lib/perl5/site_perl .) at ./configure line 1365.
+BEGIN failed--compilation aborted at ./configure line 1365.]]>
+</programlisting>
+
+		<para>
+Fetch the extra modules from the
+<ulink url="http://www.perl.com">perl website</ulink>
+or download them directly with the perl cpan module, which you
+can do with
+		</para>
+
+<programlisting>
+<![CDATA[
+director:# cpan
+or
+director:# perl -MCPAN -e "shell"
+]]>
+</programlisting>
+
+
+		<para>
+You will get the cpan prompt. Help, which you get by typing
+"help" at the cpan prompt, is cryptic. To get the hang of cpan,
+try the `r` command, which will list the most recent updates for
+modules you currently have installed.
+You should be able to install <filename>Net::DNS</filename> with
+		</para>
+
+<programlisting>
+<![CDATA[
+cpan> install Net::DNS
+]]>
+</programlisting>
+
+		<para>
+If your upgrade has any dependencies, you will be prompted to download
+them too.
+		</para>
+
+		<para>
+The <filename>rc.lvs</filename> script uses <filename>fping</filename>
+to test connections.
+<filename>fping</filename> is available from
+		</para>
+
+		<para>ftp://ftp.kernel.org/pub/software/admin/mon</para>
+
+		<para>
+The newer versions of ping have the functionality of fping
+and the current configure script tests for this functionality.
+For older versions of configure, if you don't want to download
+fping, you can use this script instead of fping (put it in /usr/local/bin
+and make it executable).
+		</para>
+
+<programlisting>
+<![CDATA[
+#!/bin/sh
+#fping replacement
+
+ping -c 1 $1
+#-----fping-------------
+]]>
+</programlisting>
+		</section>
+		<section id="running">
+		<title>running the configure script</title>
+		<para>
+Pick an appropriate template conf file (lvs_nat.conf,
+lvs_tun.conf or lvs_dr.conf) for the mode you are operating the
+LVS under (VS-NAT, LVS-Tun or LVS-DR respectively) and edit the
+IPs and services for your situation.
+There are example conf files for the various forwarding types,
+number of networks and number of NICs.
+The format of the conf file is the same for all LVS setups - only
+the IPs/networks change when you change from a 1-NIC director to
+a 2-NIC director. Several example conf files are provided but
+the only thing that changes between the diagrams is the
+network diagrams (and targets for default gw),
+not the format of the conf file directives.
+The files come preconfigured
+for telnet as the service. This is the simplest service
+for initial tests: the client is readily available and on
+connection, the login prompt will tell you which server you have
+connected to. Use round robin scheduling, so that you will
+connect to each server in turn, confirming that they are all
+working.</para><para
+>Other services can be added by uncommenting/adding or editing the
+entries in the example *.conf files. The *.conf files give
+suggested IP's (192.168.1.x/24, 10.1.1.x/24) for the various
+machines.
+		</para>
+
+		<para>run the configure script</para>
+
+<programlisting>
+<![CDATA[
+$ ./configure.pl lvs_nat.conf
+]]>
+</programlisting>
+
+		<para>
+This produces an rc.lvs_xxx script (eg rc.lvs_nat, rc.lvs_tun,
+rc.lvs_dr), and a mon_xxx.cf script. (After testing put rc.lvs_xxx into
+/etc/rc.d or /etc/init.d and put mon_xxx.cf in /etc/mon)
+		</para>
+
+		<para>
+Run the <filename>rc.lvs</filename> script on the director and then the realservers with
+the command
+		</para>
+
+<programlisting>
+<![CDATA[
+$ . ./rc.lvs_dr
+]]>
+</programlisting>
+
+		<para>
+or possibly (if you get weird errors, eg it doesn't detect correctly whether
+it's running on a director or a realserver - this happens on my 2.0.36 realserver)
+		</para>
+
+		<para>
+$sh rc.lvs_dr
+		</para>
+
+		<para>The <filename>rc.lvs</filename> script -</para>
+
+		<itemizedlist>
+			<listitem>adds ethernet devices and routes to director, realservers (including non-Linux)</listitem>
+			<listitem>checks connections with fping.</listitem>
+			<listitem>runs ipchains </listitem>
+			<listitem>turns ipforwarding on (VS-NAT) or off (VS-DR, LVS-Tun)</listitem>
+			<listitem>turns off icmp redirects (VS-NAT)</listitem>
+			<listitem>adds services with ipvsadm.</listitem>
+		</itemizedlist>
+
+		<para>The <filename>rc.lvs</filename> script does not -</para>
+
+		<itemizedlist>
+			<listitem>know about director failover. It assumes there is only one director.</listitem>
+		</itemizedlist>
+
+		<para>
+Check the output from ipvsadm, ifconfig -a and netstat -rn on the
+director and then the realserver(s), to see that the
+services/IP's are correct. If not re-edit and re-run the script(s).
+		</para>
+		</section>
+
+		<section id="test">
+		<title>Test with telnet</title>
+		
+		<para>
+Telnet is a non-persistent service (in the http sense, rather than the LVS sense)
+and will allow you to check that all realservers are present (you'll
+get the login prompt from each realserver in turn).
+		</para>
+
+		<para>
+Check that the service(s) are running on each server at the IP of
+the VIP (use netstat -an). Some services (eg telnet listen to
+0.0.0.0, ie to all IPs on a machine).
+		</para>
+
+		<para>
+If there are no errors on running the rc.lvs_xxx script, then
+telnet from the client to the VIP (here 192.168.1.110). You will
+be routed through to one of the realservers and you will get the
+login prompt (and real name) of a realserver and can login.</para><para
+>On the director look at the output of ipvsadm, you should see a
+connection to a realserver on port:23.
+		</para>
+			
+		<para>On the realserver do</para>
+
+		<para>
+$ netstat -an | grep 23
+		</para>
+
+		<para>and look for connections to the telnet port.</para>
+
+		<para>Logout and telnet again to the VIP. You will get the login prompt
+from the next realserver.
+		</para>
+	
+		</section>
+
+		<section id="something_else">
+		<title>Test with something else eg http</title>
+
+		<para>
+Edit lvs_nat.conf activating http, rerun configure.pl and rerun
+the new rc.lvs_nat files.
+		</para>
+
+		<para>
+http:
+Point your browser to the VIP http://192.168.1.110.  You will get
+the DocumentRoot of one of the realservers. Open another copy of
+the browser and connect again. You should get the other server
+(this will be easier to see if the webpages are different). Look
+at the output of ipvsadm on the director for connections to the httpd
+ports, and on the server look at the output from netstat -an | grep 80
+(or 8080 if you are running LVS-NAT and have remapped the ports) for connections.
+		</para>
+
+		<para>
+If your httpd is persistent (in the http sense),
+you will/may connect to the same website each time.
+		</para>
+		</section>
+
+	</section>
+	<section id="install_general">
+	<title>Install - General</title>
+
+		<section id="abbreviations">
+		<title>Abreviations/conventions for setup/testing/configuring</title>
+
+<programlisting><![CDATA[
+client:      client's IP         =CIP
+gateway:     gateway/router's IP =DGW (router will be the client in most test setups)
+director:    director's IP       =DIP on director   eth0
+             virtual IP          =VIP on director   eth0:x (eg eth0:1)
+realserver:  realserver IP       =RIP on realserver eth0
+             virtual IP          =VIP on realserver eth0:x/lo:0/tunl0/dummy0
+             gateway             =SGW
+]]></programlisting>
+
+		<note>
+		<para>
+the DIP and the VIP must be different IPs (they can be on the same NIC).
+		</para>
+		</note>
+
+		<note>
+		<para>
+the DIP and the VIP will be moved to another director on director failover.
+These IPs will be setup as secondary IPs (aliases in the language of 2.0 and 2.2 kernels)
+so that you can later use director failover. The configure script sets up these
+IPs for you (<emphasis
+>i.e.</emphasis> you shouldn't have the VIP and the DIP as primary IPs
+already installed on your director).
+		</para>
+		</note>
+
+
+		<para>
+Julian Anastasov <emphasis>ja (at) ssi (dot) bg</emphasis> 06 Nov 2001
+		</para>
+		<blockquote>
+		<para>
+If DIP==VIP the realserver will receive
+packets with saddr=local_ip (VIP) from the director.
+(This is the &quot;source martian&quot; problem.) You
+have to add additional IP(DIP) in your director and when you execute
+ip route get x.y.z.230 you have to see that x.y.z.180 is not
+your preferred source. The usual way to achieve this is to
+configure VIP on another device (eg. lo) or to configure them
+after the DIP is configured. By this way DIP will become your
+preferred source when talking to your subnet.
+		</para>
+		<para>
+Adding DIP is not mandatory for any LVS setup to work
+but you will not be able to send non-LVS traffic between the
+director and the real servers (ping in you case).
+		</para>
+		</blockquote>
+		</section>
+
+		<section id="doing">
+		<title>What you'll be doing</title>
+
+		<para>
+Chris <emphasis>chrisd (at) better-investing (dot) org</emphasis> 15 Apr 2002
+		</para>
+		<blockquote>
+
+		<orderedlist>
+			<listitem> I downloaded the kernel from kernel.org.</listitem>
+			<listitem> I downloaded the ipvs patch (use the single patch)</listitem>
+			<listitem> I downloaded the hidden patch.</listitem>
+			<listitem> I uncompressed the kernel source in /usr/src</listitem>
+			<listitem> I uncompressed the hidden patch in /root</listitem>
+			<listitem> I uncompressed the ipvs single file.</listitem>
+			<listitem> I copied the hidden patch to /usr/src/linux</listitem>
+			<listitem> I executed: patch -p1 &lt;hidden-2.4.5-1.diff</listitem>
+			<listitem> I copied the ipvs patch to /usr/src/linux</listitem>
+			<listitem> I executed: patch -p1 &lt;linux-2.4.18-ipvs-1.0.2.patch</listitem>
+			<listitem> I did a make menu config, and configured my kernel</listitem>
+			<listitem> I did the exact same steps you did to compile it:
+<programlisting><![CDATA[
+make dep;make clean;make bzImage;make modules;make modules_install
+]]></programlisting>
+			</listitem>
+		</orderedlist>
+
+		<para>I didn't have any glitches.</para>
+
+		<para>Things to watch out for:</para>
+
+		<itemizedlist>
+			<listitem>Don't apply each patch more than once!</listitem>
+			<listitem>
+If it didn't work following these steps and you have RH 7.2, make sure you
+have all the gcc packages installed.  If you must, put the cd back in the
+drive, and do an "upgrade", and install the tools necessary
+			</listitem>
+			<listitem>
+If that isn't it, make sure your gcc is up to date.
+An easy way of doing this is by downloading red-carpet from Ximian.org.
+It is an Xwindows updater.
+You do not have to have gnome to run this (anymore).
+			</listitem>
+			<listitem>
+If this doesn't work, track down a *real* guru, cuz I am fresh out of ideas!
+			</listitem>
+		</itemizedlist>
+		</blockquote>
+
+		</section>
+	</section>
+
+	<section id="DIY">
+	<title>Director kernel - build it yourself</title>
+	<para>
+(with suggestions from John Cronin
+<emphasis>jsc3 (at) havoc (dot) gtf (dot) org</emphasis>)
+	</para>
+	<note>
+This is the preferred method.
+Get a fresh kernel from <ulink url="ftp://ftp.kernel.org/pub/linux/kernel">ftp.kernel.org</ulink>
+and get the matching <filename>ip_vs</filename> code from the LVS website (on the software page).
+	</note>
+	<note>
+	<para>
+You can build the IPVS code into the kernel or as a loadable module,
+giving two versions of <filename>ip_vs</filename> for each release.
+The two versions of the code are not always released together
+(usually there is only a small delay between them).
+	</para>
+	</note>
+	<note>
+	<para>
+From Horms: If you want to fiddle with the ipvs code,
+(<emphasis>e.g.</emphasis> to change the hash table size,
+which we don't recommend you do)
+and you are compiling ipvs as a module, then you only
+need to recompile and reload the ipvs module for the
+changes in the module to take effect.
+You do need to patch and recompile the kernel in order
+to use ipvs. However for 2.4.x kernels,
+it is worth observing that this
+is only so that a symbol that ipvs needs to be able to
+hook into netfilter is registered. The kernel does not
+know or care about the code in the ipvs modules when
+it is compiled (unless you are compiling ipvs straight
+into the kernel).
+In the 2.2 kernels ipvs did a lot more patching.
+	</para>
+	</note>
+	<para>
+You must start from a clean source tree (just downloaded or
+run <command>make mrproper</command>).
+If you have previously configured the kernel for
+your hardware without ipvs,
+you should reuse your <filename>.config</filename> file.
+It will be patched, along with the kernel code (giving a new entry
+in the networking section),
+and your non-ipvs settings will be maintained.
+(Keep a backup of your <filename>.config</filename> incase
+of problems).
+	</para>
+	<para>
+Apply the ipvs kernel patch
+using the instructions in the ipvs tarball. You'll do something like
+	</para>
+
+<programlisting>
+<![CDATA[
+director:/usr/src/linux# patch -p1 <../ipvs-1.0.6-2.2.19/ipvs-1.0.6-2.2.19.patch
+
+or
+
+director:/usr/src/linux# patch -p1 <../ipvs-0.2.7-2.4.2/ipvs-0.2.7-2.4.2.patch
+]]>
+</programlisting>
+
+	<para><emphasis role="bold">ext3 filesystems</emphasis></para>
+
+	<para>There is a variable name collision when patching the kernel with
+both ipvs and ext3 patches.</para>
+
+	<para>Adam Kurzawa 4 Nov 2001</para>
+	<blockquote>
+
+	<para>
+	after applying BOTH, the lvs and ext3 patches to 2.4.13
+I get compilation errors.
+Either of the patches applied exclusively works fine.
+	</para>
+	</blockquote>
+
+	<para>Wensong</para>
+
+	<para>Remove the line of "EXPORT_SYMBOL(buffermem_pages);" in
+the linux/kernel/ksyms.c, then compile the kernel.
+	</para>
+
+		<section id="compile_instructions">
+		<title>Compile instructions</title>
+
+		<para>
+The actual kernel compile instructions will vary with
+kernel patch number. You can build ip_vs directly into the
+kernel or have it as a loadable module - either will do
+for an initial setup.
+		</para>
+		<para>You need to turn on
+"Prompt for developmental code... "
+under the "Code Maturity" section.
+In the "Networking" section, you have to turn on
+IP:masquerading before you get the ipvs options.
+		</para>
+
+		<para>
+Some of the kernel compile options below are not explicitely
+required for LVS to work, but you'll need them anyhow -
+<emphasis>e.g.</emphasis>
+ip aliasing if you need to constuct a director with only
+one NIC, or tunneling if you are going to run LVS-Tun. Until
+you know what you're doing activate all of the options with
+an '*' at the start of the line.
+The kernel configuration options below are just for LVS. You will
+need other flags set (<emphasis>e.g.</emphasis> filesystems, hardware...).
+		</para>
+		</section>
+
+		<section id="2.2.x_kernels">
+		<title>2.2.x kernels</title>
+		<para>
+The actual kernel compile instructions will vary with
+kernel patch number. Here's what I used for ipvs-0.9.9 on
+kernel 2.2.15pre9 in the Networking options.
+		</para>
+
+<programlisting>
+<![CDATA[
+
+           [*] Kernel/User netlink socket
+           [*] Routing messages
+   	< > Netlink device emulation
+*          [*] Network firewalls
+           [*] Socket Filtering
+   	<*> Unix domain sockets
+*          [*] TCP/IP networking
+           [ ] IP: multicasting
+*          [*] IP: advanced router
+*          [*] IP: policy routing
+           [ ] IP: equal cost multipath
+           [ ] IP: use TOS value as routing key
+           [ ] IP: verbose route monitoring
+           [ ] IP: large routing tables
+           [ ] IP: kernel level autoconfiguration
+*          [*] IP: firewalling
+           [ ] IP: firewall packet netlink device
+*          [*] IP: use FWMARK value as routing key (NEW)
+*          [*] IP: transparent proxy support
+*          [*] IP: masquerading
+           --- Protocol-specific masquerading support will be built as modules.
+*          [*] IP: ICMP masquerading
+           --- Protocol-specific masquerading support will be built as modules.
+*          [*] IP: masquerading special modules support
+*  	<M> IP: ipautofw masq support (EXPERIMENTAL)
+*  	<M> IP: ipportfw masq support (EXPERIMENTAL)
+*  	<M> IP: ip fwmark masq-forwarding support (EXPERIMENTAL)
+*          [*] IP: masquerading virtual server support (EXPERIMENTAL)
+*          (12) IP masquerading LVS table size (the Nth power of 2)
+*  	<M> IPVS: round-robin scheduling
+*  	<M> IPVS: weighted round-robin scheduling
+*  	<M> IPVS: least-connection scheduling
+*  	<M> IPVS: weighted least-connection scheduling
+*          [*] IP: optimize as router not host
+*  	<M> IP: tunneling
+   	<M> IP: GRE tunnels over IP
+           [*] IP: broadcast GRE over IP
+           [ ] IP: multicast routing
+           [*] IP: PIM-SM version 1 support
+           [*] IP: PIM-SM version 2 support
+*          [*] IP: aliasing support
+           [ ] IP: ARP daemon support (EXPERIMENTAL)
+*          [*] IP: TCP syncookie support (not enabled per default)
+           --- (it is safe to leave these untouched)
+   	< > IP: Reverse ARP
+           [*] IP: Allow large windows (not recommended if <16Mb of memory)
+   	< > The IPv6 protocol (EXPERIMENTAL)
+]]>
+</programlisting>
+		<para>
+<emphasis role="bold">Do not change the IP masquerading LVS (hash) table size</emphasis>
+unless you know a lot more about ip_vs than we do.
+If you're still thinking of changing the hash table size,
+at least first read the
+<ulink url="http://www.austintek.com/LVS/LVS-HOWTO/HOWTO/LVS-HOWTO.operation.html#Hash_Table">
+HOWTO
+</ulink>.
+		</para>
+		<para>
+Do all the other kernel stuff - make modules, install the modules, copy the new kernel
+(and optionally System.map, required by the
+<link linkend="configure_script">configure script</link>.)
+into / or /boot, and edit your boot loader (lilo, grub) files.
+Make sure you keep your old kernel and kernel config,
+so you can recover if all does not go well.
+Reboot to the new kernel.
+When loading the new kernel (with ip_vs built as modules),
+make sure the ip_vs* modules get loaded.
+The README in the kernel source tree has all the necessary info in there. i
+		</para>
+		</section>
+
+		<section id="2.4.x_kernels">
+		<title>2.4.x kernels</title>
+
+		<para>
+The patches to the early versions of the 2.4.x kernels were configured and
+installed separately to the "make menuconfig" for the kernel. This
+required moving files into the /lib/modules directories and loading
+the modules by hand.
+With later versions of the kernel, you can get a set of files where
+the patches are put into the source tree and configured by
+<command>make configure</command>.
+The setup varies with different <filename>ip_vs</filename> patches.
+Make sure you read the docs.
+		</para>
+
+		<note>
+		<para>
+The instructions below are for an early 2.4.x kernel.
+You can expect each kernel to be a little different.
+For 2.4.18 (Simon Young <emphasis>simon-lvs (at) blackstar (dot) co (dot) uk</emphasis>, 1 Oct 2002)
+	<blockquote>
+IP Masquerading lives under:
+
+<programlisting>
+<![CDATA[
+Networking options  --->
+  IP: Netfilter Configuration  --->
+
+  <M> IP tables support (required for filtering/masq/NAT)
+  <M>   Full NAT
+  <M>     MASQUERADE target support
+]]>
+</programlisting>
+	<para>
+All the LVS stuff should be under:
+	</para>
+
+<programlisting>
+<![CDATA[
+Networking options  --->
+  IP: Virtual Server Configuration  --->
+]]>
+</programlisting>
+	</blockquote>
+
+		</para>
+		</note>
+
+		<para>Here's the networking config</para>
+
+<programlisting>
+<![CDATA[
+	<*> Packet socket
+	[ ] Packet socket: mmapped IO
+	[*] Kernel/User netlink socket
+	[*] Routing messages
+	<*> Netlink device emulation
+	[*] Network packet filtering (replaces ipchains)
+	[*] Network packet filtering debugging
+	[*] Socket Filtering
+	<*> Unix domain sockets
+	[*] TCP/IP networking
+	[ ]   IP: multicasting
+	[*]   IP: advanced router
+	[*]     IP: policy routing
+	[*]       IP: use netfilter MARK value as routing key
+	[*]       IP: fast network address translation
+	[*]     IP: equal cost multipath
+	[*]     IP: use TOS value as routing key
+	[*]     IP: verbose route monitoring
+	[*]     IP: large routing tables
+	[*]   IP: kernel level autoconfiguration
+	[ ]     IP: BOOTP support
+	[ ]     IP: RARP support
+	<M>   IP: tunneling
+	< >   IP: GRE tunnels over IP
+	[ ]   IP: multicast routing
+	[ ]   IP: ARP daemon support (EXPERIMENTAL)
+	[ ]   IP: TCP Explicit Congestion Notification support
+	[ ]   IP: TCP syncookie support (disabled per default)
+	  IP: Netfilter Configuration  --->
+	  IP: Virtual Server Configuration  --->
+	< >   The IPv6 protocol (EXPERIMENTAL)
+	< >   Kernel httpd acceleration (EXPERIMENTAL)
+	[ ] Asynchronous Transfer Mode (ATM) (EXPERIMENTAL)
+
+	]]>
+</programlisting>
+
+		<para>
+Here's my config for the IP: Virtual Server configuration (turn it all on)
+		</para>
+
+<programlisting>
+<![CDATA[
+	<M> virtual server support (EXPERIMENTAL)
+	[*]   IP virtual server debugging (NEW)
+	(12)   IPVS connection table size (the Nth power of 2) (NEW)
+	--- IPVS scheduler    
+	<M>   round-robin scheduling (NEW)
+	<M>   weighted round-robin scheduling (NEW)
+	<M>   least-connection scheduling scheduling (NEW)
+	<M>   weighted least-connection scheduling (NEW)
+	<M>   locality-based least-connection scheduling (NEW)
+	<M>   locality-based least-connection with replication scheduling (NEW)
+	<M>   destination hashing scheduling (NEW)
+	<M>   source hashing scheduling (NEW)
+	--- IPVS application helper
+	<M>   FTP protocol helper (NEW)
+	]]>
+</programlisting>
+		<para>
+<emphasis role="bold">Do not change the IPVS connection (hash) table size</emphasis>
+unless you know a lot more about ip_vs than we do.
+If you're still thinking of changing the hash table size,
+at least first read the
+<ulink url="http://www.austintek.com/LVS/LVS-HOWTO/HOWTO/LVS-HOWTO.operation.html#Hash_Table">HOWTO</ulink>.
+		</para>
+
+		<para>Here is my config for the netfilter section</para>
+
+<programlisting>
+<![CDATA[
+	<M> Connection tracking (required for masq/NAT)
+	<M>   FTP protocol support
+	<M> Userspace queueing via NETLINK (EXPERIMENTAL)
+	<M> IP tables support (required for filtering/masq/NAT)
+	<M>   limit match support
+	<M>   MAC address match support
+	<M>   netfilter MARK match support
+	<M>   Multiple port match support
+	<M>   TOS match support
+	<M>   Connection state match support
+	<M>   Unclean match support (EXPERIMENTAL)
+	<M>   Owner match support (EXPERIMENTAL)
+	<M>   Packet filtering
+	<M>     REJECT target support
+	<M>     MIRROR target support (EXPERIMENTAL)
+	<M>   Full NAT
+	<M>     MASQUERADE target support
+	<M>     REDIRECT target support
+	<M>   Packet mangling
+	<M>     TOS target support
+	<M>     MARK target support
+	<M>   LOG target support
+	< > ipchains (2.2-style) support
+	< > ipfwadm (2.0-style) support
+	]]>
+</programlisting>
+
+		</section>
+
+		<section id="iptables_ipchains">
+		<title>iptables/ipchains compatability problems</title>
+	
+		<note>	
+		<para>
+I have removed the ipchains option here.
+This was set to &lt;M&gt; in previous versions of the mini-HOWTO.
+However this raised problems
+for people who didn't understand the ipchains compatability problems.
+		</para>
+		</note>
+
+		<para>
+ipchains in 2.2.x kernels has been replaced by iptables in 2.4.x kernels.
+For 2.4 kernels, ipchains is available for backwards compatibility.
+However ipchains and iptables can't be used at the same time.
+You should not be compiling ipchains into 2.4 kernels anymore
+(2.4.x has been out since 1999).
+		</para>
+		
+		<para>ipchains under 2.4 makes conntrack slow
+(see <ulink url="http://www.austintek.com/LVS/LVS-HOWTO/HOWTO/LVS-HOWTO.performance.html#conntrack">
+HOWTO</ulink>).</para>
+
+		<para><emphasis role="bold">The ip_tables module is incompatible with ipchains.
+If present, the ip_tables module must be unloaded for ipchains to work. </emphasis>
+		</para>
+
+		<para>
+If you have ip_tables loaded,
+you'll get uninformative errors when you try to run ipchains commands with 2.4.
+Rather than saying that ipchains under 2.4 is there for compatibility,
+it would be more accurate to say that the ipchains commands available with 2.4 kernels
+will only cause you grief and it will be faster to rewrite your scripts to
+iptables, than to fall into all the holes you'll find using the compatibility.
+It won't take long before some script/program expects to run ip_tables on your
+2.4 machine and as soon as that happens one or both (I don't know which)
+of your iptables or ipchains are hosed.
+		</para>
+		</section>
+
+		<section id="compile_kernel">
+		<title>compile kernel</title>
+
+		<para>Do all the other kernel stuff - make modules, copy the new
+kernel into / or /boot (giving it a different name to your
+working kernel <emphasis>e.g.</emphasis> bzImage-0.9.4-2.4.12), edit lilo.conf and re-run lilo.
+Make sure you leave the old kernel info in lilo.conf, so you can
+recover if all does not go well. Reboot to the new kernel.
+		</para>
+		</section>
+
+		<section id="working_kernel">
+		<title>If building ip_vs outside 2.4 kernel, have working kernel first.</title>
+
+		<para>
+Boot to the new kernel and make sure /usr/src/linux points to your
+kernel source tree (you can use rc.system_map, which comes with the
+<link linkend="configure_script">configure script</link>),
+before building ipvs (if you're doing it separately) and ipvsadm.
+		</para>
+	
+		<para>Don't forget to run <command>depmod -a</command>
+after you install the ip_vs modules.</para>
+		</section>
+	</section>
+
+	<section id="is_lvs_installed">
+	<title>How do I check to see if my kernel has the ip-vs patch installed?</title>
+	<para>
+Short answer: you shouldn't be using other people's kernels -
+go compile up an ipvs patched kernel yourself.
+	</para>
+	<para>
+Long answer:
+If you have the kernel binary, then you have a bit of a job ahead of you.
+If you've compiled it yourself, then you should give it a name like
+	</para>
+<programlisting><![CDATA[
+bzImage-0.9.3-2.4.9-module-forward-shared
+]]></programlisting>
+	<para>
+to remind you of what it is (here ip_vs 0.9.3 compiled
+as modules, kernel 2.4.9, forward-shared patch).
+	</para>
+	<para>
+Otherwise
+	</para>
+	<itemizedlist>
+		<listitem>
+		<para>
+If ipvs is compiled into the kernel
+		</para>
+<programlisting><![CDATA[
+$ grep ip_vs_init System.map
+]]></programlisting>
+		</listitem>
+		<listitem>
+if it's a recent kernel and ip_vs is compiled as a module,
+running <command>ipvsadm</command> will load the module for you. From
+there check the loaded modules with lsmod.
+		</listitem>
+		<listitem>
+for older kernels you need to load the module before running
+ipvsadm. If the kernel doesn't have the ip_vs patch, the module
+probably won't load.
+		</listitem>
+	</itemizedlist>
+	</section>
+	<section id="kernel_symbols">
+	<title>Listing symbols in the kernel</title>
+	<para>
+S.W.Seo <emphasis>ohlyugen (at) yahoo (dot) co (dot) kr</emphasis>
+	</para>
+	<blockquote>
+is there a method to see the symbols in a kernel image?
+<command>nm</command> shows the symbols in a file,
+but does not work on the kernel image.
+	</blockquote>
+	<para>
+Peter T. Breuer <emphasis>ptb (at) oboe (dot) it (dot) uc3m (dot) es</emphasis> 8 Mar 2003
+	</para>
+	<para>
+In the image, or in the kernel?
+When it's running, <filename>/proc/ksyms</filename> is what you want.
+But sure, you can apply <command>nm</command> to <filename>vmlinux</filename> and
+it will show you the symbols.
+I suspect you are talking about the compressed image plus boot header,
+<filename>vmlinuz</filename>.
+You'll have to behead and uncompress it first.
+	</para>
+	</section>
+	<section id="ipvsadm">
+	<title>ipvsadm</title>
+
+	<para>
+ipvsadm is part of the ipvs tarball
+and is the user interface to LVS.
+You run ipvsadm on the director.
+	</para>
+
+	<para>
+	Before you attempt to build ipvsadm -
+	</para>
+	
+	<itemizedlist>
+		<listitem>
+		<para>
+		reboot to your newly patched ip_vs kernel
+		</para>
+		<para>
+otherwise you'll get errors about missing ip_vs header files
+(you'll be using header files from a previous version of the kernel).
+		</para>
+		</listitem>
+		<listitem>
+Check that you really are in the new patched kernel.
+		<para>
+Do <command>uname -a</command>, or
+if you have compiled ip_vs as a module, do <command>lsmod | grep ip_vs</command>.
+		</para>
+		</listitem>
+	</itemizedlist>
+
+	<para>
+Do a <command>make install</command> for ipvsadm.
+Make sure the ipvsadm you are using is from the
+same ip_vs tarball as the kernel patches
+(if you just make the new kernel
+and forget to install the new ipvsadm
+you'll have the old ipvsadm with the new ipvs code).
+Since you can't compile/run ipvsadm till
+the you're running under the new kernel,
+sometimes you forget to do the make install
+on ipvsadm after rebooting.
+	</para>
+
+	<note>
+<command>ipvsadm</command> doesn't have strong version testing capabilities.
+It will run on an incompatible version of ip_vs and it won't be obvious,
+if you're new to LVS,
+that the strange output is a version mis-match problem
+(I've done it and had to ask about it on the mailing list).
+I usually have several different versions of <filename>ip_vs</filename>
+around for testing.
+I install <filename>ipvsadm</filename> as
+<filename>/sbin/ipvsadm-(ip_vs_version-kernel_version)</filename>
+<emphasis>e.g.</emphasis>
+<filename>ipvsadm-0.2.12-2.4.4</filename>,
+and let
+<ulink url="http://www.austintek.com/LVS/LVS-HOWTO/HOWTO/LVS-HOWTO.ipvsadm.html#rc.system_map">
+rc.system_map</ulink>
+relink to the correct ipvsadm on bootup.
+	</note>
+		<section id="ipvsadm_popt">
+		<title>compiling ipvsadm with popt</title>
+		<para>
+You can optionally compile ipvsadm with
+<ulink url="http://directory.fsf.org/libs/popt.html">popt libraries</ulink>,
+<ulink url="http://directory.fsf.org/libs/popt.html">popt libraries</ulink>,
+which allows ipvsadm to handle more complicated arguments
+on the command line. If your libpopt library is too old,
+your ipvsadm will segv. The default compile used to link against
+static popt libraries but now uses dynamic libraries.
+If you get errors about POPT not found,
+then you haven't installed popt,
+or you may not have a recent popt.
+		</para>
+
+		<para>Torsten Buslei</para>
+		<blockquote>
+		<para>
+I've just compiled and installed a new Kernel (2.4.18 with patch
+2.4.19-pre8 and linux-2.4.18-ipvs-1.0.2.patch.gz).
+After reboot (everything's fine till here), compiling
+ipvsadm (either ipvs-1.0.2.tar.gz or ipvsadm-1.20.tar.gz)
+I've get the following error-messages:
+		</para>
+
+<programlisting> <![CDATA[
+ipvsadm.c:345: `POPT_ARGFLAG_OPTIONAL' undeclared (first use in this function)
+]]> </programlisting>
+
+		<para>
+I commented out this part of ipvsadm.c:345
+		</para>
+
+<programlisting>
+<![CDATA[
+{"persistent", 'p', POPT_ARG_STRING/*|POPT_ARGFLAG_OPTIONAL*/, &optarg, 'p'},
+]]>
+</programlisting>
+
+		<para>
+ipvsadm makes and runs fine now. Was this OK to do?
+		</para>
+		</blockquote>
+
+		<para>
+Horms <emphasis>horms (at) vergenet (dot) net</emphasis> 05 May 2002
+		</para>
+		<para>
+You would appear to have a version of popt that does not support optional
+arguments (POPT_ARGFLAG_OPTIONAL). Your fix should be fine, with the side
+effect that you will have to give an argument to -p / --persistent if you
+use that option.
+		</para>
+		</section>
+	</section>
+	<section id="check_software">
+	<title>Director: check software</title>
+	<para>
+With a bit of skill and luck you will have loaded all the
+software without any errors.
+	</para>
+
+	<para>Check that ipvsadm detects the kernel patches by running</para>
+
+<programlisting>
+<![CDATA[
+director:/etc/lvs:# ipvsadm
+]]>
+</programlisting>
+
+	<para>
+success will look something like
+	</para>
+
+<programlisting>
+<![CDATA[
+director:/usr/src# ipvsadm
+IP Virtual Server version 0.2.7 (size=4096)
+Prot LocalAddress:Port Scheduler Flags
+  -> RemoteAddress:Port          Forward Weight ActiveConn InActConn
+]]>
+</programlisting>
+
+	<para>
+If you aren't running a kernel with ipvs patches, you'll get
+error messages about missing ipvs modules.
+	</para>
+	</section>
+
+	<section id="someone_else">
+	<title>Director kernel: get someone else to do it for you </title>
+	
+	<para>
+Despite our continuing admonitions to build at least your first kernel
+for LVS from the standard kernel, people still try to patch
+	</para>
+
+	<para>
+Some distributions have kernels prepatched with ipvs.
+RedHat started doing this in late 1999
+(but apparently have stopped with kernel 2.4.20
+according to Peter Nash
+<emphasis>peter (dot) nash (at) changeworks (dot) do (do) uk</emphasis>
+15 May 2003 and with RedHat 9.0 according to James Bourne
+<emphasis>james (at) sublime (dot) com (dot) au</emphasis>).
+SuSE has talked about doing it (Dec 2000)
+(and has started doing it May 2003).
+If you have one of these distributions,
+follow the instructions provided with the
+distribution for getting a working LVS director.
+Since an average of 2 ipvs versions come out for every kernel version,
+you will likely have an older ipvs version if you choose this route.
+This is not a problem - ipvs was production quality when first released,
+however versions more than 6-12months old are not supported on the mailing list.
+You'll be told to upgrade and come back again.
+	</para>
+
+	<para>
+If you don't know if you have a kernel prepatched with ipvs, either
+ask your Linux Vendor or look in your kernel source tree for
+ipvs files (names like /usr/src/linux/net/ipv4/ip_vs_*.c).
+	</para>
+
+	<para>If you are not sure, then
+<link linkend="fresh_kernel">setup with a fresh kernel from ftp.kernel.org/pub/linux/kernel/</link>.
+You can always return to your patched distribution later.
+If you try to patch a kernel that already has ipvs patches applied,
+you will get patch errors
+<emphasis>e.g.</emphasis>
+	</para>
+
+<programlisting>
+<![CDATA[
+> Hunk #1 succeeded at 121 with fuzz 2 (offset 18 lines).
+> Hunk #2 FAILED at 153.
+> Hunk #3 FAILED at 163.
+> Hunk #4 FAILED at 177.
+> 3 out of 4 hunks FAILED -- saving rejects to include/linux/ip_masq.h.rej
+>
+> patching file `include/net/ip_masq.h'
+> Reversed (or previously applied) patch detected!  Assume -R? [n]
+]]>
+</programlisting>
+
+	<para>
+People who compile the kernel after a failed second layer of
+patches wind up on the mailing list with errors that are impossible
+to fathom.
+One of the major sources of questions on the mailing
+list is from people running RedHat who find that their install
+fails when following the instructions in the mini-HOWTO.
+They aren't starting with standard kernel and the instructions from RedHat
+haven't told them what's going on.
+	</para>
+
+	<para>
+Here's advice from
+Lars<emphasis>lmb (at) suse (dot) com</emphasis>
+	</para>
+	<blockquote>
+	<para>
+Hey, if you are getting an error message like this, or if your
+distribution already includes LVS, don't try applying the patch on top
+of it.
+	</para>
+
+	<para>
+First, try checking with your Linux vendor whether an updated kernel
+package with full support is already available.
+	</para>
+
+	<para>
+If you think this revision of the LVS patches provides significant
+improvement over the previous ones, or fixes a critical bug for you,
+and the vendor doesn't yet provide an updated kernel, please ask them
+to do so.
+	</para>
+
+	<para>
+If you need a newer revision than what your distribution supplies,
+please grab a clean kernel tree from kernel.org and start from that.
+Make sure to apply all other patches you need!
+	</para>
+	</blockquote>
+
+		<section id="Horms_RedHat">
+		<title>Handling the prepatched RedHat kernel</title>
+
+		<para>
+Ramish Patel wrote:
+		</para>
+
+		<blockquote>
+		<para>
+I am using Red Hat Linux 7.2, kernel 2.4.7-10, and I have attempted to
+apply numerous patches to it for lvs, only two of which have been
+successfully applied without errors -- they came from
+<filename>ipvs-1.0.4.tar.gz</filename>,
+which contained the two patches which were successfully applied to the kernel,
+<filename>
+linux_kernel_ksyms.c.diff
+</filename>,
+<filename>
+linux_net_netsyms.c.diff
+</filename>.
+		</para>
+
+		<para>
+I re-compiled the kernel afterwards. I am still getting error messages:
+		</para>
+
+<programlisting>
+<![CDATA[
+"Could not open the /proc/net/ip_masq/vs file
+Are you sure that the IP Virtual Server is supported by the kernel?"
+]]>
+</programlisting>
+
+		</blockquote>
+
+		<para>
+Horms <emphasis>horms (at) verge (dot) net (dot) au</emphasis> 31 Jul 2002
+		</para>
+
+		<para>
+Firstly I would strongly recommend that you start with
+a kernel from kernel.org (such as 2.4.18) rather than
+using Red Hat's Kernel unless you know what you
+are doing. ipvs-1.0.4 does not work out of the box with
+the Kernel shipped with Red Hat 7.2 and vice versa.
+		</para>
+
+		<para>
+However if you want to do this here is a rough guide.
+		</para>
+		<itemizedlist>
+			<listitem>
+You need to apply the linux_kernel_ksyms.c.diff and
+   linux_net_netsyms.c.diff
+			</listitem>
+			<listitem>
+You need to remove the existing version of LVS which is
+   present in the 7.2 kernel. You can do this by examining
+   the patches that are provided with the kernel src.rpm
+   and the spec.file.
+			</listitem>
+			<listitem>
+Compile the kernel - a few minor things may fail.
+   Again this is the "way of pain".
+			</listitem>
+			<listitem>
+Build the kernel modules privieded in the ipvs/ subdirectory
+   of ipvs-1.0.4.tar.gz. You will need to make modifications
+   to the source to get this to work, but they should be minor.
+			</listitem>
+		</itemizedlist>
+
+		<para>
+		Alex Kramarov has
+(http://mail.incredimail.com/howto/lvs/install/ - link dead Jul 2004)
+instructions for building/upgrading the RedHat kernel.
+		</para>
+		</section>
+
+	</section>
+	<section id="compile_problems">
+	<title>Director: compile problems</title>
+
+	<para>Kim Le, Jul 25, 2001</para>
+	<blockquote>
+I am having problem when trying to compile LVS as module. It keeps
+complaining "unresovled symbols - nf_register_hook".
+I though it is because I don't have NETFILTER select, so I did make
+menuconfig, select NETFILTER and recompile the kernel.  I check the
+System.map and did see nf_register_hook symbol in there.
+	</blockquote>
+
+	<para>Horms</para>
+
+	<para>
+	I believe that you are having a kernel symbols issue as discuessed in
+http://marc.theaimsgroup.com/?l=linux-virtual-server&amp;m=98766822929703&amp;w=2
+You can find information on how to resolve this problem at
+http://lists.samba.org/listproc/netfilter/1999-November/002871.html
+Basically your kernel symbols are out of date and you need to
+rebuild the kernel back from "make mrproper". You may want
+to back up your kernel config before you do this.
+Once this is done go back into the ipvs directory and run
+	</para>
+
+<programlisting>
+<![CDATA[
+$ make clean all install
+]]>
+</programlisting>
+
+	Wensong
+	<para>
+My understanding is that as kernel/ksyms.c is patched
+we need to do a <command>make mrproper</command> to make sure the ksyms are up
+to date when the kernel is built. Is this correct? If so
+it wouldn't hurt to include this information in the README.
+	</para>
+	
+	<para>
+Here's the original posting for the fix from the samba list.</para>
+<para>Erik Ratcliffe <emphasis>erik (at) calderasystems (dot) com</emphasis> 29 Nov 1999</para>
+
+	<para>The symbols exported from the kernel should be stored in
+/usr/src/linux/include/linux/modules.  Most notably, the ksyms.ver file.  If
+your kernel was built from an existing source tree and you did not run 'make
+mrproper' first, odds are the files in the forementioned directory are stale.
+I have seen this happen on a number of systems where an SMP kernel is in use
+against a Linux source tree that contains non-SMP symbol versions (you can
+tell the SMP symbol versions by the "smp_" prefix in the CRC/version number;
+non-SMP kernel symbols do not have this prefix).
+	</para>
+
+	<para>The best way to remedy this is to rebuild the kernel all they 
+way from 'make mrproper' to 'make modules_install'.  
+Be sure to state that versions should be
+assigned to module symbols in the kernel configuration before doing so.
+	</para>
+	<para>
+Aisha <emphasis>aayesha83 (at) yahoo (dot) com</emphasis> Aug 25, 2005 
+	</para>
+	<blockquote>
+I'm new to LVS and I have done all the steps described in the minimum
+configuration setup, but when
+I do modules_install, it tells me that
+there are "unresolved symboles" in ip_vs.o file.
+	</blockquote>
+	<para>
+Horms
+	</para>
+	<para>
+These kind of problems usually have one of three causes.
+	</para>
+	<itemizedlist>
+		<listitem>
+			<para>
+The you turned on some options, like say netfilter, in
+a tree that had alredy been built and some object files didn't
+get rebuilt even though they should have been, and thus some symbols 
+are missing. I remember seeing this a lot with 2.4, it seemed
+to be a problem with the build system. Fortunately its easy,
+though a little time consuming to solve.
+			</para>
+			<para>
+From the toplevel directory of your kernel source.
+			</para>
+<programlisting><![CDATA[
+mv .config ../saved.config
+make mrproper
+mv ../saved.config .config
+make oldconfig
+make bzImage modules ...
+]]></programlisting>
+		</listitem>
+		<listitem>
+You have edited your .config file by hand and have managed
+to produce an invalid config - for intance you enabled LVS
+without enabling Netfilter. Don't do this!!! Use make menuconfig
+or make config unless you really know what is going on.
+		</listitem>
+		<listitem>
+The build is fine, but during the course of modules_install,
+depmod is called, and depmod tries to resolve symbols against the
+current running kernel, they don't exist, 
+and you get the errror you are seeing.
+This can be resolved most reasily be rebooting into your new kernel.
+		</listitem>
+	</itemizedlist>
+	</section>
+</section>
+<section id="example_LVS-NAT">
+<title>Example 1: LVS using LVS-NAT forwarding</title>
+<para>
+LVS-NAT forwarding was the first method used to setup an LVS.
+For 2.2 kernels on the director, 
+it gives lower throughput at high load compared to LVS-DR or LVS-Tun, 
+due to the CPU overhead of rewriting packets,
+but still is useful in some circumstances.
+For 2.4 (and later) kernels on the director, 
+there is little performance difference between LVS-NAT and the other forwarding methods.
+</para>
+<para>
+Setup an LVS with two networks (here 192.168.1.0/24 and 192.168.2.0/24)
+using a single NIC on each machine.
+(For the test, don't have any other IPs on the machines).
+The VIP on the ethernet alias (eth0:110) is
+setup by the
+<link linkend="configure_script">configure script</link>,
+<emphasis>i.e.</emphasis>, don't add the VIP. There should be no default routes,
+and all interfaces on the 192.168.1.0/24 network should be able
+to ping each other. The client won't be able to connect to anything
+till the VIP is enabled on the director.
+</para>
+<warning>
+	<para>
+You must have two networks for this setup to work.
+Here one NIC is used on the director 
+(you can use two if you like, but you'll have to change the setup yourself). 
+If you want all machines on the one network (<emphasis>192.168.1.0/24</emphasis>)
+then read 
+<ulink url="http://www.austintek.com/LVS/LVS-HOWTO/HOWTO/LVS-HOWTO.LVS-NAT.html#one_network">One Network LVS-NAT</ulink>
+(http://www.austintek.com/LVS/LVS-HOWTO/HOWTO/LVS-HOWTO.LVS-NAT.html#one_network).
+	</para>
+</warning>
+<programlisting>
+<![CDATA[
+                        ________
+                       |        |
+                       | client |
+                       |________|
+                    CIP=DGW=192.168.2.254 (eth0)
+                           |
+                           |
+             __________    |
+            |          |   |   (VIP=192.168.2.110,eth0:110)
+            | director |---|
+            |__________|   |   DIP=SGW=192.168.1.9(eth0)
+                           |
+                           |
+          -----------------------------------
+          |                                 |
+          |                                 |
+  RIP=192.168.1.11(eth0)              RIP=192.168.1.12(eth0)
+     ____________                        ____________
+    |            |                      |            |
+    | realserver |                      | realserver |
+    |____________|                      |____________|
+]]>
+</programlisting>
+
+	<section id="LVS-NAT_configure-script">
+	<title>Setup using the configure script</title>
+	<warning>
+		<para>
+The <filename>configure</filename> has a bug for LVS-NAT.
+It removes the default gw for the director (which should
+be the local router). You'll have to add this back by hand.
+(The script correctly removes the default gw for LVS-DR
+and LVS-Tun.
+For the reason why you shouldn't have a default gw on LVS-DR and LVS-Tun directors
+see 
+<ulink url="http://www.austintek.com/LVS/LVS-HOWTO/HOWTO/LVS-HOWTO.LVS-DR.html#Pearthree">
+security concerns: default gw(s) and routing with LVS-DR/LVS-Tun
+</ulink>.
+It would be better for LVS-NAT just to have a route from VIP:80 to 0/0:0 rather
+than a default route.)
+		</para>
+	</warning>
+	<para>
+	For the v0.9.x series of configure script, use
+the conf file lvs_nat.conf.one_NIC_two_network
+	</para>
+
+<programlisting>
+<![CDATA[
+
+#----------lvs_nat.conf------------------------------------
+LVSCONF_FORMAT=1.1
+LVS_TYPE=VS_NAT
+INITIAL_STATE=on
+CLEAR_IPVS_TABLES=yes
+#
+#VIP line format - device[:alias] IP netmask broadcast
+#To help avoid namespace collisions with other VIPs, I set alias=last number of VIP (here 110).
+VIP=eth0:110 192.168.2.110 255.255.255.0 192.168.2.255
+#
+#DIP line format - device[:alias] IP network netmask broadcast
+DIP=eth0 192.168.1.9 192.168.1.0 255.255.255.0 192.168.1.255
+#
+#DIRECTOR_GW - packets with src_addr=VIP, dst_addr=0/0 are sent to DIRECTOR_GW
+#to be forwarded to the outside world.
+DIRECTOR_GW=192.168.2.254
+#
+#SERVICE line format - proto port scheduler IP|name:port[,weight] [IP|name:port[weight]]
+SERVICE=t telnet rr 192.168.1.11:telnet 192.168.1.12:telnet
+#SERVICE=t http rr 192.168.1.11:http,1 192.168.1.12:http,2
+#
+SERVER_NET_DEVICE=eth0
+#VS-NAT real-servers do not have a VIP, i.e. there is no SERVER_VIP_DEVICE
+#SERVER_VIP_DEVICE=
+#SERVER_GW is not user configurable with LVS-NAT. script sets SERVER_GW = DIP
+#SERVER_GW=
+#----------end lvs_nat.conf---------------------------------
+]]>
+</programlisting>
+
+	<para>then run the configure script </para>
+
+<programlisting>
+<![CDATA[
+$./configure lvs_nat.conf
+]]>
+</programlisting>
+
+	<para>this will produce (among other things) a file rc.lvs_nat (or rc.lvs).</para>
+
+	<para>
+Run this rc.lvs_nat file first on the director and then on the two
+realservers (the file knows whether it's running on a director or
+realserver and acts appropriately). One of the big traps in
+setting up a LVS-NAT LVS is that you have to make the director
+the default route for the realservers (the script does this
+for you) - it won't work if you don't do this.
+	</para>
+	</section>
+
+	<section id="LVS-NAT by hand">
+	<title>Setup by hand</title>
+
+	<para>Run this script on the director (thanks to Ian Gibbs for correction to a typo).</para>
+	
+<programlisting>
+<![CDATA[
+#!/bin/sh
+#------mini-HOWTO-setup-LVS-NAT-director----------
+
+#set ip_forward ON for vs-nat director (1 on, 0 off).
+cat /proc/sys/net/ipv4/ip_forward
+echo "1" >/proc/sys/net/ipv4/ip_forward
+
+#director is gw for realservers
+#turn OFF icmp redirects (1 on, 0 off)
+echo "0" >/proc/sys/net/ipv4/conf/all/send_redirects
+cat       /proc/sys/net/ipv4/conf/all/send_redirects
+echo "0" >/proc/sys/net/ipv4/conf/default/send_redirects
+cat       /proc/sys/net/ipv4/conf/default/send_redirects
+echo "0" >/proc/sys/net/ipv4/conf/eth0/send_redirects
+cat       /proc/sys/net/ipv4/conf/eth0/send_redirects
+
+#setup VIP
+/sbin/ifconfig eth0:110 192.168.2.110 broadcast 192.168.2.255 netmask 255.255.255.0
+
+#set default gateway
+/sbin/route add default gw 192.168.2.254 netmask 0.0.0.0 metric 1
+
+#clear ipvsadm tables
+/sbin/ipvsadm -C
+
+#install LVS services with ipvsadm
+#add telnet to VIP with rr sheduling
+/sbin/ipvsadm -A -t 192.168.2.110:telnet -s rr
+
+#first realserver
+#forward telnet to realserver 192.168.1.11 using LVS-NAT (-m), with weight=1
+/sbin/ipvsadm -a -t 192.168.2.110:telnet -r 192.168.1.11:telnet -m -w 1
+#check that realserver is reachable from director
+ping -c 1 192.168.1.11
+
+#second realserver
+#forward telnet to realserver 192.168.1.12 using LVS-NAT (-m), with weight=1
+/sbin/ipvsadm -a -t 192.168.2.110:telnet -r 192.168.1.12:telnet -m -w 1
+#checking if realserver is reachable from director
+ping -c 1 192.168.1.12
+
+#list ipvsadm table
+/sbin/ipvsadm
+#------mini-HOWTO-setup-LVS-NAT-director----------
+]]>
+</programlisting>
+
+	<para>Run this script on the realservers</para>
+
+<programlisting>
+<![CDATA[
+#!/bin/sh
+#---------mini-HOWTO-setup-LVS-NAT-realserver-------
+#installing default gw 192.168.1.9 for vs-nat'
+/sbin/route add default gw 192.168.1.9
+#show routing table
+/bin/netstat -rn
+
+#checking if DEFAULT_GW is reachable
+ping -c 1 192.168.1.9
+
+#looking for VIP on director from realserver
+ping -c 1 192.168.2.110
+
+#set_realserver_ip_forwarding to OFF (1 on, 0 off).
+echo "0" >/proc/sys/net/ipv4/ip_forward
+cat       /proc/sys/net/ipv4/ip_forward
+
+#---------mini-HOWTO-setup-LVS-NAT-realserver-------
+]]>
+</programlisting>
+
+	</section>
+
+	<section id="test_LVS-NAT">
+	<title>Test LVS-NAT operation</title>
+
+	<para>
+On the director run the command
+	</para>
+
+<programlisting>
+<![CDATA[
+$ipvsadm
+]]>
+</programlisting>
+<para>
+The output should be something like
+</para>
+<programlisting>
+<![CDATA[
+director:/lvs/conf# ipvsadm
+IP Virtual Server version 0.9.14 (size=4096)
+Prot LocalAddress:Port Scheduler Flags
+  -> RemoteAddress:Port          Forward Weight ActiveConn InActConn
+TCP  192.168.2.110:telnet rr
+  -> 192.168.1.11:telnet          Masq    1      0          0
+  -> 192.168.1.12:telnet          Masq    1      0          0
+]]>
+</programlisting>
+
+	<para>Now telnet from the client to 192.168.2.110. You will get the
+login prompt from one of the realservers (note which one). Then
+on the director re-run ipvsadm
+	</para>
+
+<programlisting>
+<![CDATA[
+director:/lvs/conf# ipvsadm
+IP Virtual Server version 0.9.14 (size=4096)
+Prot LocalAddress:Port Scheduler Flags
+  -> RemoteAddress:Port          Forward Weight ActiveConn InActConn
+TCP  192.168.2.110:telnet rr
+  -> 192.168.1.11:telnet          Masq    1      1          0
+  -> 192.168.1.12:telnet          Masq    1      0          0
+]]>
+</programlisting>
+
+	<para>
+Note the ActiveConn counter has incremented.
+	</para>
+
+	<para>
+Open another window on the client and telnet to 192.168.2.110.
+You should get the login prompt for the other realserver.
+Re-run ipvsadm.
+	</para>
+
+<programlisting>
+<![CDATA[
+director:/lvs/conf# ipvsadm
+IP Virtual Server version 0.9.14 (size=4096)
+Prot LocalAddress:Port Scheduler Flags
+  -> RemoteAddress:Port          Forward Weight ActiveConn InActConn
+TCP  192.168.2.110:telnet rr
+  -> 192.168.1.11:telnet          Masq    1      1          0
+  -> 192.168.1.12:telnet          Masq    1      1          0
+]]>
+</programlisting>
+
+	<para>
+There are now 2 connections active.
+	</para>
+
+	<para>
+You are now connected to the realservers by a telnet session.
+Congratulations - you have set up a LVS-NAT LVS for the service telnet.
+	</para>
+	</section>
+
+	<section id="telnet_LVS-NAT">
+	<title>Setup LVS-NAT for the service http</title>
+	<para>
+Make sure the realservers are serving http with each realserver
+listening to port 80 on its own IP
+(the RIP, <emphasis>e.g.</emphasis> 192.168.1.11, 192.168.1.12)
+<emphasis>i.e.</emphasis> on a different IP for each realserver. Make the 2 webpages a
+little different so that you can tell which machine you have connected to.
+	</para>
+
+	<para>Change the conf file by uncommenting the http line and commenting out the
+telnet line in the conf file.</para>
+
+<programlisting>
+<![CDATA[
+#SERVICE=t telnet rr 192.168.1.11telnet 192.168.1.12:telnet
+SERVICE=t http rr 192.168.1.11:http 192.168.1.12:http
+]]>
+</programlisting>
+
+	<para>Rerun the configure script on the new conf file, rerun the <filename>rc.lvs</filename>files
+on the director and then the realservers.
+	</para>
+	
+	<para>or
+	</para>
+
+	<para>
+For configuration by hand, substitute http for telnet in the director script - you don't need
+to run the realserver script again.
+	</para>
+
+	<para>If you get no errors then run ipvsadm</para>
+
+<programlisting>
+<![CDATA[
+director:/lvs/conf# ipvsadm
+IP Virtual Server version 0.9.14 (size=4096)
+Prot LocalAddress:Port Scheduler Flags
+  -> RemoteAddress:Port          Forward Weight ActiveConn InActConn
+TCP  192.168.2.110:www rr
+  -> 192.168.1.11:www             Masq    1      0          0
+  -> 192.168.1.12:www             Masq    1      0          0
+]]>
+</programlisting>
+
+	<para>
+Direct your http client to 192.168.2.110. If you get the expected
+webpage, shift-reload a few times (for netscape), watching the
+webpages alternate between realservers. In some circumstances,
+presumably due to http persistance, the connection will persist on
+one realserver. In this case use lynx, curl or telnet to 192.168.2.110 80
+and at the blank prompt type
+	</para>
+
+<programlisting>
+<![CDATA[
+GET /
+]]>
+</programlisting>
+
+	<para>to use lynx do </para>
+
+<programlisting>
+<![CDATA[
+$ lynx -dump http://192.168.2.110/
+]]>
+</programlisting>
+
+
+	<para>Re-run ipvsadm (on the director)</para>
+
+<programlisting>
+<![CDATA[
+director:/lvs/conf# ipvsadm
+IP Virtual Server version 0.9.14 (size=4096)
+Prot LocalAddress:Port Scheduler Flags
+  -> RemoteAddress:Port          Forward Weight ActiveConn InActConn
+TCP  192.168.2.110:www rr
+  -> 192.168.1.11:www             Masq    1      0          13
+  -> 192.168.1.12:www             Masq    1      0          12
+]]>
+</programlisting>
+
+	<para>
+Unlike telnet there are no ActiveConn seen even though you have
+a webpage displayed on the client. The http protocol disconnects
+after 15secs changing the connections to InActConn. These expire
+in about 2 mins (re-run ipvsadm after 2mins and see that
+InActConn drops to 0).
+	</para>
+
+	<para>
+The template timeout can be seen by invoking ipchains -L -M -n (for 2.2 kernels,
+for 2.4 kernels and more info see the HOWTO).
+	</para>
+	</section>
+</section>
+
+<section id="example_lvs_dr">
+<title>Example: Setup LVS using LVS-DR forwarding</title>
+
+<para>
+Setup an LVS with a single network (here 192.168.1.0/24)
+on machines with a single NIC.
+The IPs on ethernet aliases (eg eth0:110, lo:0) are
+setup by the configure script. There should be no default
+routes and all machines should be able to ping each other.
+</para>
+
+<programlisting>
+<![CDATA[
+                        ________
+                       |        |
+                       | client |
+                       |________|
+                   CIP=SGW=192.168.1.254 (eth0)
+                           |
+                           |
+             __________    |
+            |          |   |   (VIP=192.168.1.110, eth0:110)
+            | director |---|
+            |__________|   |   DIP=192.168.1.9 (eth0)
+                           |
+                           |
+          -----------------------------------
+          |                                 |
+          |                                 |
+ RIP=192.168.1.11(eth0)             RIP=192.168.1.12(eth0)
+(VIP=192.168.1.110, lo:0)          (VIP=192.168.1.110, lo:0)
+    ____________                       ____________
+   |            |                     |            |
+   | realserver |                     | realserver |
+   |____________|                     |____________|
+]]>
+</programlisting>
+
+	<section id="telnet_LVS-DR">
+	<title>VS-DR for the service telnet</title>
+	<para>
+For the v0.9.x series of configure script,
+use the conf file lvs_drt.conf.one_NIC_one_network
+	</para>
+
+<programlisting>
+<![CDATA[
+#----------lvs_dr.conf----------------------------------------
+LVSCONF_FORMAT=1.1
+LVS_TYPE=VS_DR
+INITIAL_STATE=on
+CLEAR_IPVS_TABLES=yes
+#VIP line format - device[:alias] IP netmask broadcast
+#To help avoid namespace collisions with other VIPs, I set alias=last number of VIP (here 110).
+#note: for LVS-DR, LVS-Tun, the IP is in a /32 network
+VIP=eth0:110 192.168.1.110 255.255.255.255 192.168.1.110
+#DIP line format - device[:alias] IP network netmask broadcast
+DIP=eth0:9 192.168.1.9 192.168.1.0 255.255.255.0 192.168.1.255
+#no DIRECTOR_GW for LVS-DR or LVS-Tun
+#DIRECTOR_GW=
+#SERVICE line format - proto port scheduler IP[,weight] [IP[,weight]]
+SERVICE=t telnet rr 192.168.1.11 192.168.1.12
+#SERVICE=t http rr 192.168.1.11 192.168.1.12
+SERVER_VIP_DEVICE=lo:110
+SERVER_NET_DEVICE=eth0
+#SERVER_GW - packets with src_addr=VIP, dst_addr=0/0 are sent to SERVER_GW
+#to be forwarded to the outside world.
+#For standard LVS-DR,VS-Tun, this must _NOT_ be the director.
+#For Julian's martian modification (see the HOWTO), it will be the director.
+#If you don't know about the martian modification, you aren't using it.
+#The script will not neccesarily set up the SERVER_GW as the real-servers's default gw.
+SERVER_GW=192.168.1.254
+#----------end lvs_dr.conf------------------------------------
+]]>
+</programlisting>
+
+	<para>then</para>
+
+<programlisting><![CDATA[
+$./configure lvs_dr.conf
+]]>
+</programlisting>
+
+	<para>this will produce (among other things) a file rc.lvs_dr</para>
+	<para>
+Run this rc.lvs_dr file first on the director and then on the two
+realservers (the file knows whether it's running on a director or
+realserver and acts appropriately).
+	</para>
+	</section>
+
+	<section id="lvs_dr_by_hand">
+	<title>Setup by hand</title>
+	<para>
+On the director run this script
+	</para>
+
+<programlisting>
+<![CDATA[
+#!/bin/bash
+#---------------mini-rc.lvs_dr-director------------------------
+#set ip_forward OFF for lvs-dr director (1 on, 0 off)
+#(there is no forwarding in the conventional sense for LVS-DR)
+cat       /proc/sys/net/ipv4/ip_forward
+echo "0" >/proc/sys/net/ipv4/ip_forward
+
+#director is not gw for realservers: leave icmp redirects on
+echo 'setting icmp redirects (1 on, 0 off) '
+echo "1" >/proc/sys/net/ipv4/conf/all/send_redirects
+cat       /proc/sys/net/ipv4/conf/all/send_redirects
+echo "1" >/proc/sys/net/ipv4/conf/default/send_redirects
+cat       /proc/sys/net/ipv4/conf/default/send_redirects
+echo "1" >/proc/sys/net/ipv4/conf/eth0/send_redirects
+cat       /proc/sys/net/ipv4/conf/eth0/send_redirects
+
+#add ethernet device and routing for VIP 192.168.1.110
+/sbin/ifconfig eth0:110 192.168.1.110 broadcast 192.168.1.110 netmask 255.255.255.255
+/sbin/route add -host 192.168.1.110 dev eth0:110
+#listing ifconfig info for VIP 192.168.1.110
+/sbin/ifconfig eth0:110
+
+#check VIP 192.168.1.110 is reachable from self (director)
+/bin/ping -c 1 192.168.1.110
+#listing routing info for VIP 192.168.1.110
+/bin/netstat -rn
+
+#setup_ipvsadm_table
+#clear ipvsadm table
+/sbin/ipvsadm -C
+#installing LVS services with ipvsadm
+#add telnet to VIP with round robin scheduling
+/sbin/ipvsadm -A -t 192.168.1.110:telnet -s rr
+
+#forward telnet to realserver using direct routing with weight 1
+/sbin/ipvsadm -a -t 192.168.1.110:telnet -r 192.168.1.11 -g -w 1
+#check realserver reachable from director
+ping -c 1 192.168.1.11
+
+#forward telnet to realserver using direct routing with weight 1
+/sbin/ipvsadm -a -t 192.168.1.110:telnet -r 192.168.1.12 -g -w 1
+#check realserver reachable from director
+ping -c 1 192.168.1.12
+
+#displaying ipvsadm settings
+/sbin/ipvsadm
+
+#not installing a default gw for LVS_TYPE vs-dr
+#---------------mini-rc.lvs_dr-director------------------------
+]]>
+</programlisting>
+	<para>
+Pat Villani <emphasis>Pat (dot) Villani (at) hp (dot) com</emphasis> 09 Oct 2004	</para>
+	<blockquote>
+I'm using the LVS-DR example out of the mini-HOWTO.  One of the first 
+steps is to turn off ip_forward.  Why?  It seems to work without that 
+step and doing so interferes with my NAT service.
+	</blockquote>
+	<para>
+I only turned it off because you don't need it on for LVS-DR,
+and turning it off makes the machine more secure. 
+You can turn it on if you have other reasons to do so.
+	</para>
+	<para>On the realservers run this script</para>
+
+<programlisting>
+<![CDATA[
+#!/bin/bash
+#----------mini-rc.lvs_dr-realserver------------------
+#installing default gw 192.168.1.254 for vs-dr
+/sbin/route add default gw 192.168.1.254
+#showing routing table
+/bin/netstat -rn
+#checking if DEFAULT_GW 192.168.1.254 is reachable
+ping -c 1 192.168.1.254
+
+#set_realserver_ip_forwarding to OFF (1 on, 0 off).
+echo "0" >/proc/sys/net/ipv4/ip_forward
+cat       /proc/sys/net/ipv4/ip_forward
+
+#looking for DIP 192.168.1.9
+ping -c 1 192.168.1.9
+
+#looking for VIP (will be on director)
+ping -c 1 192.168.1.110
+
+#install_realserver_vip
+/sbin/ifconfig lo:110 192.168.1.110 broadcast 192.168.1.110 netmask 0xffffffff up
+#ifconfig output
+/sbin/ifconfig lo:110
+#installing route for VIP 192.168.1.110 on device lo:110
+/sbin/route add -host 192.168.1.110 dev lo:110
+#listing routing info for VIP 192.168.1.110
+/bin/netstat -rn
+
+#hiding interface lo:110, will not arp
+echo "1" >/proc/sys/net/ipv4/conf/all/hidden
+cat       /proc/sys/net/ipv4/conf/all/hidden
+echo "1" >/proc/sys/net/ipv4/conf/lo/hidden
+cat       /proc/sys/net/ipv4/conf/lo/hidden
+
+#----------mini-rc.lvs_dr-realserver------------------
+]]>
+</programlisting>
+
+	</section>
+
+	<section id="test_LVS-DR">
+	<title>Test LVS-DR operation</title>
+	<para>Then on the director run the command</para>
+
+<programlisting>
+<![CDATA[
+$ipvsadm
+]]>
+</programlisting>
+
+	<para>
+The output should be something like
+	</para>
+
+<programlisting>
+<![CDATA[
+director:/lvs/conf# ipvsadm
+IP Virtual Server version 0.9.14 (size=4096)
+Prot LocalAddress:Port Scheduler Flags
+  -> RemoteAddress:Port          Forward Weight ActiveConn InActConn
+TCP  192.168.1.110:telnet rr
+  -> 192.168.1.11:telnet          Route    1      0          0
+  -> 192.168.1.12:telnet          Route    1      0          0
+]]>
+</programlisting>
+
+	<para>Note that the forwarding method has changed from Masq to Route.</para>
+
+	<para>
+Now telnet from the client to 192.168.1.110. You will get the
+login prompt from one of the realservers (note which one). Then
+re-run ipvsadm
+</para>
+
+<programlisting>
+<![CDATA[
+director:/lvs/conf# ipvsadm
+IP Virtual Server version 0.9.14 (size=4096)
+Prot LocalAddress:Port Scheduler Flags
+  -> RemoteAddress:Port          Forward Weight ActiveConn InActConn
+TCP  192.168.1.110:telnet rr
+  -> 192.168.1.11:telnet          Route    1      1          0
+  -> 192.168.1.12:telnet          Route    1      0          0
+]]>
+</programlisting>
+
+	<para>
+If you have tcpwrappers running around telnet on the realservers,
+the login will be delayed by an interval between 7secs(Slackware)
+and 3mins(RedHat). You can fix this by changing the line in inetd.conf
+	</para>
+
+<programlisting><![CDATA[
+from
+telnet  stream  tcp     nowait  root    /usr/sbin/tcpd  in.telnetd
+
+to
+telnet  stream  tcp     nowait  root    /usr/sbin/in.telnetd  in.telnetd
+]]>
+</programlisting>
+
+	<para>
+and re-HUPing inetd. If you have a pam-ified telnetd and login, you
+may never be able to fix this delay (RedHat 6.2 man pages tell you to
+change entries in /etc/pam.conf, a file that doesn't exist).
+	</para>
+
+	<para>
+After logging in, the telnet session behaves normally. This delay
+is only a minor nuisance, but it is difficult to differentiate
+from a hung connection due to an LVS misconfiguration (which
+hopefully would have been picked up when running the configure
+script).
+This delay doesn't occur with LVS-NAT (see the section on
+identd in the HOWTO for an explanation).
+	</para>
+
+	<para>
+Open another window on the client and telnet again to 192.168.1.110.
+You should get the login prompt for the other realserver.
+Re-run ipvsadm.
+	</para>
+
+<programlisting><![CDATA[
+director:/lvs/conf# ipvsadm
+IP Virtual Server version 0.9.14 (size=4096)
+Prot LocalAddress:Port Scheduler Flags
+  -> RemoteAddress:Port          Forward Weight ActiveConn InActConn
+TCP  192.168.1.110:telnet rr
+  -> 192.168.1.11:telnet          Route    1      1          0
+  -> 192.168.1.12:telnet          Route    1      1          0
+]]>
+</programlisting>
+
+	<para>There are now 2 connections active.</para>
+
+	<para>
+You are now connected to the realservers be a normal telnet session.
+Congratulations - you have set up a LVS-DR LVS for the service telnet.
+	</para>
+	</section>
+
+	<section id="http_LVS-DR">
+	<title>Setup LVS-DR for the service http</title>
+
+	<para><emphasis role="bold">IMPORTANT:</emphasis>
+Make sure the httpd on the realservers are listening to VIP:80 
+(here 192.168.1.110:80)
+<emphasis>i.e</emphasis> both realservers
+are listening to the <emphasis role="bold">same IP</emphasis>.
+The connection from the lvs client will arrive at VIP:80 on the realserver.
+You will need the VIP setup on lo:0 before the httpds will start.
+(You also can have the httpd listening on the 
+RIP, here 192.168.1.11 or 192.168.1.12, if you like, 
+but these IPs are not involved in the LVS.) 
+Make the webpage on each realserver a little different so that
+you can tell which realserver you have connected to. 
+	</para>
+	<para>Change the conf file by adding an http line and commenting out the
+telnet line.
+	</para>
+
+<programlisting><![CDATA[
+#----------lvs_dr.conf------------------------------------
+#SERVICE=t telnet rr 192.168.1.11 192.168.1.12
+SERVICE=t http rr 192.168.1.11 192.168.1.12
+#----------end lvs_dr.conf------------------------------------
+]]></programlisting>
+
+	<para>Rerun the configure script on the conf file, rerun the <filename>rc.lvs</filename>files
+on the director and then the realservers. </para>
+	<para>or</para>
+	<para>if you are setting up by hand, change telnet to http and rerun the script
+on the director. You don't need to rerun the script on the realservers.</para><para
+>If you get no errors then run ipvsadm
+	</para>
+
+<programlisting><![CDATA[
+>director:/lvs/conf# ipvsadm
+IP Virtual Server version 0.9.14 (size=4096)
+Prot LocalAddress:Port Scheduler Flags
+  -> RemoteAddress:Port          Forward Weight ActiveConn InActConn
+TCP  192.168.1.110:www rr
+  -> 192.168.1.11:www             Route    1      0          0
+  -> 192.168.1.12:www             Route    1      0          0
+]]>
+</programlisting>
+
+	<para>
+Connect your http client to 192.168.1.110. If you get the expected
+webpage, shift-reload a few times, watching the webpages alternate
+between realservers. In some circumstances, presumably due to
+http persistance, the connection will persist on one realserver.
+In this case use lynx or telnet to 192.168.1.110 80 and at
+the blank prompt type
+	</para>
+
+<programlisting><![CDATA[
+GET /
+]]>
+</programlisting>
+
+	<para>to use lynx do </para>
+
+<programlisting>
+<![CDATA[
+$ lynx -dump http://192.168.1.110/
+]]>
+</programlisting>
+
+	<para>Re-run ipvsadm (on the director)</para>
+
+<programlisting><![CDATA[
+>director:/lvs/conf# ipvsadm
+IP Virtual Server version 0.9.14 (size=4096)
+Prot LocalAddress:Port Scheduler Flags
+  -> RemoteAddress:Port          Forward Weight ActiveConn InActConn
+TCP  192.168.1.110:www rr
+  -> 192.168.1.11:www             Route    1      0          5
+  -> 192.168.1.12:www             Route    1      0          4
+]]></programlisting>
+
+	<para>Unlike telnet there are no ActiveConn seen even though you have
+a webpage displayed on the client. The http protocol disconnects
+after 15secs (max). The connections change to InActConn and expire
+in about 2 mins. If you then re-run ipvsadm the InActConn will drop
+to 0.
+	</para>
+
+	<para>
+Congratulations, you're done. Go have fun. For more information
+look at the HOWTO and docs on the LVS website and scan the
+mail archives. If you have any questions, join the
+mailing list.
+	</para>
+	</section>
+</section>
+
+<section id="other_users">
+<title>How users have done it</title>
+
+	<section id="browning">
+	<title>Dan Browning, LVS-DR on Red Hat 7.2: handling ARP, other misc problems</title>
+
+	<para>
+The original posting is at
+<ulink url="http://marc.theaimsgroup.com/?l-linux-virtual-server&amp;m=101027363828375&amp;w">
+lvs mailing list archives</ulink>
+	</para>
+
+	<para>Dan Browning <emphasis>db (at) kavod (dot) com</emphasis> 2002-01-05</para>
+
+	<para>Okay, this is the last time I post on this, I promise.  :-)  My trigger
+finger was a little quick on the last mail I sent out, so this one
+includes *all* the instructions (more or less) the way I did it to setup
+a LVS-DR on Red Hat 7.2.
+	</para>
+
+	<para>I hope that it may be of use to someone sometime.  Next project:
+automatic failover to backup LVS director...
+	</para>
+
+<programlisting>
+<![CDATA[
+mkdir ~/download/piranha
+cd ~/download/piranha
+wget \
+
+ftp://ftp.linux.org.uk/pub/linux/piranha/7.2/piranha/piranha-0.6.0-15.i386.rpm \
+ftp://ftp.linux.org.uk/pub/linux/piranha/7.2/ipvsadm/ipvsadm-1.18-8.i386.rpm \
+ftp://ftp.linux.org.uk/pub/linux/piranha/7.2/scsi_reserve/scsi_reserve-0.7-6.i386.rpm \
+        -c
+rpm -Uvh *.rpm
+
+chkconfig piranha-gui on
+service piranha-gui restart
+
+piranha-passwd homelast
+
+# If you will be using two directors (that need to sync seemlessly)
+# Setup keyless scp on all the nodes:
+ssh-keygen -t rsa
+cat .ssh/id_rsa.pub | ssh SERVERNAME 'cat >>~/.ssh/authorized_keys2'
+
+# Helpful Documentation
+http://ha.redhat.com/docs/high-availability/index.html
+http://www.linuxvirtualserver.org/docs/arp.html
+http://www.linux-vs.org/~julian/hidden.txt
+
+# Enabling IP Encapsulation
+# On each real server, establish a tunnel between it and each virtual
+server address. For example, these commands establish two tunnels (tunl0
+and # # tunl1) to two virtual server addresses...
+# To prevent real servers, rather than the active router,
+# from intercepting ARP broadcasts, you also need to hide
+# tunnels from ARP broadcasts. For example, these commands
+# hide tunnels tunl0:
+
+# Insert the ipip module, if not statically compiled into the kernel
+already
+insmod ipip
+# Make the tunl0 device up
+ifconfig tunl0 0.0.0.0 up
+# Start the hiding interface functionality
+echo 1 > /proc/sys/net/ipv4/conf/all/hidden
+# Hide all addresses for this tunnel device
+echo 1 > /proc/sys/net/ipv4/conf/tunl0/hidden
+# Configure a VIP on an alias of tunnel device
+ifconfig tunl0:0 1.2.3.4 up
+
+# Testing
+lynx --dump http://VIP/test
+ab -n 100 -c 10 http://VIP/index.html
+
+Environment: Red Hat 7.2, Piranha 0.6.0-15, RH stock kernel (2.4.7-10)
+
+                       ________
+                      |        |
+                      | client |
+                      |________|
+                      CIP=5.6.7.8
+                           |
+                           |
+                           |
+                      __________
+                     |          |
+                     | Internet |
+                     |__________|
+                           |
+                           |
+                           |
+                      VIP=1.2.3.4 (eth0:1)
+                      __________
+                     |          |
+                     | director |
+                     |__________|
+                      DIP=1.2.3.5 (eth0)
+                           |
+                           |
+          /---------------------------------\
+          |                |                |
+          |                |                |
+  RIP1=1.2.3.10        N/A (yet)        N/A (yet)
+   _____________     _____________    _____________
+  |             |   |             |  |             |
+  | realserver  |   | realserver  |  | realserver  |
+  |_____________|   |_____________|  |_____________|
+
+###############
+##   DETAILS:
+###############
+Setup the Director:
+
+Install Piranha, lvsadm
+Configure like so:
+
+serial_no = 38
+primary = 1.2.3.4
+service = lvs
+backup = 0.0.0.0
+heartbeat = 1
+heartbeat_port = 539
+keepalive = 6
+deadtime = 18
+network = direct
+reservation_conflict_action = preempt
+debug_level = NONE
+virtual http {
+     active = 1
+     address = 1.2.3.5 eth1
+     port = 80
+     send = "GET / HTTP/1.0\r\n\r\n"
+     expect = "HTTP"
+     load_monitor = none
+     scheduler = wlc
+     protocol = tcp
+     timeout = 6
+     reentry = 15
+     quiesce_server = 0
+     server www4real {
+         address = 1.2.3.10
+         active = 1
+         weight = 1
+     }
+}
+
+        IP Virtual Server version 0.8.1 (size=65536)
+Prot LocalAddress:Port Scheduler Flags
+  -> RemoteAddress:Port             Forward Weight ActiveConn InActConn
+TCP  1.2.3.5:80 rr
+  -> 1.2.3.10:80               Route   1      0          0
+
+CURRENT LVS PROCESSES
+root      1992  0.0  0.0  1604  600 ?        S    15:45   0:00 pulse
+root      2295  0.0  0.0  1604  600 ?        S    15:45   0:00
+/usr/sbin/lvs --nofork -c /etc/sysconfig/ha/lvs.cf
+root      2299  0.0  0.0  1640  648 ?        S    15:45   0:00
+/usr/sbin/nanny -c -h 1.2.3.10 -p 80 -s GET / HTTP/1.0\r\n\r\n -
+
+## Notes for recompiling 2.4.17 with ipvs and hidden patches on Red Hat 7.2 ##
+## (On both real server and the director)
+
+# Download directory
+export D=/tmp/download
+
+mkdir $D
+cd $D
+
+#kernel
+wget http://www.kernel.org/pub/linux/kernel/v2.4/linux-2.4.17.tar.gz
+
+#hidden patch
+wget http://www.linux-vs.org/~julian/hidden-2.4.5-1.diff
+
+#IPVS patch
+wget
+http://www.linuxvirtualserver.org/software/kernel-2.4/linux-2.4.12-ipvs-
+0.8.2.patch.gz
+
+#net filter module - if you want to do just the module instead of the
+big kernel patch above.
+wget
+http://www.linuxvirtualserver.org/software/kernel-2.4/ipvs-0.8.2.tar.gz
+
+#ipvs admin
+wget ftp://rpmfind.net/linux/redhatbeta/ha/i386/ipvsadm-1.17-2.i386.rpm
+
+# Unpack new kernel
+tar zxvf linux-2.4.17.tar.gz
+
+# Unpack ipvs patch
+gunzip linux-2.4.12-ipvs-0.8.2.patch.gz
+
+# Unpack kernel
+mv linux /usr/src/linux-2.4.17
+cd /usr/src
+
+# Recreate symlink
+rm -f linux-2.4
+ln -s linux-2.4.17 linux-2.4
+ln -s linux-2.4.17 linux
+
+# Apply "hidden" patch
+cd linux-2.4.17
+patch -p1 < $D/hidden-2.4.5-1.diff
+
+Should see:
+###############################
+patching file include/linux/inetdevice.h
+patching file include/linux/sysctl.h
+Hunk #1 succeeded at 334 (offset 9 lines).
+patching file net/ipv4/arp.c
+Hunk #3 succeeded at 754 (offset -1 lines).
+patching file net/ipv4/devinet.c
+Hunk #1 succeeded at 756 (offset 20 lines).
+Hunk #2 succeeded at 1013 (offset -4 lines).
+Hunk #3 succeeded at 1079 (offset 20 lines).
+patching file Documentation/filesystems/proc.txt
+Hunk #1 succeeded at 1583 (offset 5 lines).
+patching file Documentation/networking/ip-sysctl.txt
+###############################
+
+# Apply ipvs patch
+patch -p1 < $D/linux-2.4.12-ipvs-0.8.2.patch
+
+# ipvsadm 1.18-8, which is newer, is already installed (from piranha
+project)
+
+make clean
+make mrproper
+make menuconfig
+make bzImage
+make modules
+make modules_install
+make install #doesn't support GRUB yet.  - or can copy the
+arch/i386/boot/bzImage file manually
+vi /boot/grub/grub.conf:
+title 2.4.17_ipvs
+        root (hd0,0)
+        kernel /boot/vmlinuz-2.4.17 ro root=/dev/sda1
+
+#now copy the /usr/src/linux-2.4.17 to the next linux box:
+tar czf linux-2.4.17-dir.tgz /usr/src/linux-2.4.17/
+
+scp linux-2.4.17-dir.tgz SERVER_TWO:/usr/src
+
+#now unpack in SERVER_TWO
+tar zxvf linux-2.4.17-dir.tgz
+cd linux-2.4.17
+make modules_install
+make install
+# do grub config again.
+title 2.4.17_ipvs
+        root (hd0,0)
+        kernel /boot/vmlinuz-2.4.17 ro root=/dev/sda1
+# reboot!
+]]>
+</programlisting>
+
+	</section>
+	<section id="palmer">
+	<title>Jezz Palmer, setup of LVS squid</title>
+
+	<para> Jezz Palmer <emphasis>J (dot) D (dot) F (dot) Palmer (at) swansea (dot) ac (dot) uk</emphasis> 29 May 2002,
+to set up a squid LVS.
+	</para>
+
+	<para>
+Directors are running 2.4.18 Kernel
+RealServers 2.4.7 (standard RH 7.2 but recompiled). Squid did not work with
+2.4.18 or 2.4.17 for some reason.
+	</para>
+
+	<para>Firstly I created the director.
+I used instructions written by Dan Browning (above) to configure the kernel
+Note, I only used the kernel config bit, I've edited it for 2.4.18 and the
+later ipvsadm and ipvsadm patch and a few other bits.
+	</para>
+
+	<para>
+Notes for recompiling 2.4.18 with ipvs and hidden patches on Red Hat 7.2
+	</para>
+
+<programlisting>
+<![CDATA[
+# Download directory
+export D=/tmp/download
+
+mkdir $D
+cd $D
+
+#kernel
+wget http://www.kernel.org/pub/linux/kernel/v2.4/linux-2.4.18.tar.gz
+
+#hidden patch
+wget http://www.linux-vs.org/~julian/hidden-2.4.5-1.diff
+
+#IPVS patch
+wget
+http://www.linuxvirtualserver.org/software/kernel-2.4/linux-2.4.18-ipvs-1.0.
+0.patch.gz
+
+#ipvs admin
+wget
+http://www.linuxvirtualserver.org/software/kernel-2.4/ipvsadm-1.20.tar.gz
+
+#Unpack and install ipvsadm admin
+tar xvzf  ipvsadm-1.20.tar.gz
+cd ipvsadm
+make install
+
+# Unpack new kernel
+tar zxvf linux-2.4.18.tar.gz
+
+# Unpack ipvs patch
+gunzip linux-2.4.18-ipvs-1.0.0.patch.gz
+
+# Unpack kernel
+mv linux /usr/src/linux-2.4.18
+cd /usr/src
+
+# Recreate symlink
+rm -f linux-2.4
+ln -s linux-2.4.18 linux-2.4
+ln -s linux-2.4.18 linux
+
+# Apply "hidden" patch
+cd linux-2.4.18
+patch -p1 < $D/hidden-2.4.5-1.diff
+
+Should see:
+###############################
+patching file include/linux/inetdevice.h
+patching file include/linux/sysctl.h
+Hunk #1 succeeded at 334 (offset 9 lines).
+patching file net/ipv4/arp.c
+Hunk #3 succeeded at 754 (offset -1 lines).
+patching file net/ipv4/devinet.c
+Hunk #1 succeeded at 756 (offset 20 lines).
+Hunk #2 succeeded at 1013 (offset -4 lines).
+Hunk #3 succeeded at 1079 (offset 20 lines).
+patching file Documentation/filesystems/proc.txt
+Hunk #1 succeeded at 1583 (offset 5 lines).
+patching file Documentation/networking/ip-sysctl.txt
+###############################
+
+# Apply ipvs patch
+patch -p1 < $D/ linux-2.4.18-ipvs-1.0.0.patch
+
+make clean
+make mrproper
+
+# At this stage I copied the default config (matching my system) from the
+original RH 7.2 kernel  to .config so save me time selecting modules.
+
+cp /usr/src/linux-2.4.7-10/configs/kernel-2.4.7-i686-smp.config ./.config
+
+make menuconfig
+]]>
+</programlisting>
+
+<para>
+Leave all other settings the same, but go to ...
+</para>
+<programlisting>
+<![CDATA[
+Networking Options -> IP: Virtual Server Configuration and build in [*] virtual server support [EXPERIMENTAL]
+]]>
+</programlisting>
+<para>
+and accept the defaults.
+</para>
+
+<programlisting>
+<![CDATA[
+
+make bzImage
+make modules
+make modules_install
+make install #doesn't support GRUB yet.  - or can copy the
+arch/i386/boot/bzImage file manually
+vi /boot/grub/grub.conf:
+title 2.4.18_ipvs
+	root (hd0,0)
+	kernel /boot/vmlinuz-2.4.18 ro root=/dev/****
+
+#If you have two (or more) directors with the same hardware then copy to the
+new kernel to them,
+
+tar czf linux-2.4.18-dir.tgz /usr/src/linux-2.4.18/
+scp linux-2.4.18-dir.tgz SERVER_TWO:/usr/src
+
+#now unpack in SERVER_TWO
+tar zxvf linux-2.4.18-dir.tgz
+cd linux-2.4.18
+make modules_install
+make install
+# do grub config again.
+title 2.4.18_ipvs
+	root (hd0,0)
+	kernel /boot/vmlinuz-2.4.17 ro root=/dev/****
+# reboot!
+]]>
+</programlisting>
+	<para>
+If the hardware is substantially different then repeat the process on the
+next server using the correct default config file from
+/usr/src/linux-2.4.7-10/configs/
+	</para>
+	<para>Real Servers.</para>
+	<para>
+For the real servers I just repeated the above process but with the default
+kernel (2.4.7) supplied with RH 7.2.  The ipvsadm patch isn't necessary but
+what the hell, that's what I did. It would probably work without the ipvsadm
+patch and just the hidden patch.
+	</para>
+	<para>Getting it to Work.</para>
+	<para>
+I'm using LVS_DR.
+Initially I decided to set up an http LVS using 1 director and 3 http realservers.
+Http purely because it's easier to ascertain as to whether it's working or
+not.
+So I setup apache on the three machines, making the root index page to just
+say the name of the machine.
+Then I used  Joe Mack's configure script with my config to generate the
+rc.lvs script to run on the machines in the LVS.
+I downloaded configure-lvs_0.9.2 from
+http://www.linuxvirtualserver.org/Joseph.Mack/configure-lvs_0.9.2.tar.gz
+	</para>
+	<para>It requires Net-DNS-0.19, which I downloaded from
+http://www.perl.com/CPAN-local/authors/id/B/BB/BBB/Net-DNS-0.19.tar.gz
+	</para>
+	<para>So after untaring and installing Net-DNS-0.19, I untarred the
+configure-lvs_0.9.2.tar.gz file
+	</para>
+<programlisting>
+<![CDATA[
+tar xvzf configure-lvs_0.9.2.tar.gz
+cd configure-lvs_0.9.2
+]]>
+</programlisting>
+	<para>
+I then chose the closest match to my network of the 12 or so example configs
+and edited it to look like this. The one I chose was
+lvs_dr.conf.one_NIC_one_network. (IPs etc deleted for convenience).
+	</para>
+
+<programlisting>
+<![CDATA[
+#----------lvs_dr.conf----------------------------------------
+LVSCONF_FORMAT=1.1
+LVS_TYPE=VS_DR
+INITIAL_STATE=on
+CLEAR_IPVS_TABLES=yes
+#VIP line format - device[:alias] IP netmask broadcast
+#To help avoid namespace collisions with other VIPs, I set alias=last number
+of VIP (here 110).
+#note: for LVS-DR, LVS-Tun, the IP is in a /32 network
+VIP=eth0:110 my_vip 255.255.255.255 my_vip
+#DIP line format - device[:alias] IP network netmask broadcast
+DIP=eth0:9 my_dip my_dip_network 255.255.255.0 my_dip_broadcast
+#no DIRECTOR_GW for LVS-DR or LVS-Tun
+#DIRECTOR_GW=
+#SERVICE line format - proto port scheduler IP[,weight] [IP[,weight]]
+SERVICE=t http rr rip1,1 rip2,1 rip3,1
+SERVER_VIP_DEVICE=lo:110
+SERVER_NET_DEVICE=eth0
+#SERVER_GW - packets with src_addr=VIP, dst_addr=0/0 are sent to SERVER_GW
+#to be forwarded to the outside world.
+#For standard LVS-DR,VS-Tun, this must _NOT_ be the director.
+#For Julian's martian modification (see the HOWTO), it will be the director.
+#If you don't know about the martian modification, you aren't using it.
+#The script will not neccesarily set up the SERVER_GW as the real-servers's default gw.
+SERVER_GW=my_server_gw
+#----------end lvs_dr.conf------------------------------------
+]]>
+</programlisting>
+
+	<para>
+I used the configure script to generate the rc.lvs
+	</para>
+	<para>./configure lvs_dr.conf.one_NIC_one_network</para>
+
+	<para>The <filename>rc.lvs</filename>was ran on the local machine then  copied  on to all of the
+remaining servers in the LVS, IE and the 3 http realservers.
+	</para>
+
+	<para>At this point by typing ipvsadm at the prompt you should get something like
+this showing that your LVS is running.
+	</para>
+
+<programlisting>
+<![CDATA[
+[root@director1 root]# ipvsadm
+IP Virtual Server version 1.0.0 (size=65536)
+Prot LocalAddress:Port Scheduler Flags
+  -> RemoteAddress:Port           Forward Weight ActiveConn InActConn
+TCP  vip:80 rr
+  -> rip1:80                      Route   1      0          0
+  -> rip2:80                      Route   1      0          0
+  -> rip3:80                      Route   1      0          0
+]]>
+</programlisting>
+
+	<para>
+Then to test it go to a browser on another box and type http://vip
+(or whatever your VIP is), you should get a screen showing the name of the
+first server in the list, keep hitting refresh and the name should change as
+it rotates around the list of realservers.  This will only happen with RR
+scheduling but it proves the point nicely.
+	</para>
+
+	<para>Next step, applying this to squid. Eek!</para>
+
+	<para>Firstly I changed the config file to the squid servers and squid port.
+	</para>
+
+<programlisting>
+<![CDATA[
+#----------lvs_dr.conf----------------------------------------
+LVSCONF_FORMAT=1.1
+LVS_TYPE=VS_DR
+INITIAL_STATE=on
+CLEAR_IPVS_TABLES=yes
+#VIP line format - device[:alias] IP netmask broadcast
+#To help avoid namespace collisions with other VIPs, I set alias=last number
+of VIP (here 110).
+#note: for LVS-DR, LVS-Tun, the IP is in a /32 network
+VIP=eth0:110 vip 255.255.255.255 vip
+#DIP line format - device[:alias] IP network netmask broadcast
+DIP=eth0:9 dip dip_network 255.255.255.0 dip_broadcast
+#no DIRECTOR_GW for LVS-DR or LVS-Tun
+#DIRECTOR_GW=
+#SERVICE line format - proto port scheduler IP[,weight] [IP[,weight]]
+SERVICE=t squid rr rip1,1 rip2,1
+SERVER_VIP_DEVICE=lo:110
+SERVER_NET_DEVICE=eth0
+#SERVER_GW - packets with src_addr=VIP, dst_addr=0/0 are sent to SERVER_GW
+#to be forwarded to the outside world.
+#For standard LVS-DR, LVS-Tun, this must _NOT_ be the director.
+#For Julian's martian modification (see the HOWTO), it will be the director.
+#If you don't know about the martian modification, you aren't using it.
+#The script will not neccesarily set up the SERVER_GW as the real-servers's default gw.
+SERVER_GW=server_gw
+#----------end lvs_dr.conf------------------------------------
+]]>
+</programlisting>
+
+	<para>
+Then re-ran
+	</para>
+
+<programlisting>
+<![CDATA[
+./configure lvs_dr.conf.one_NIC_one_network
+]]>
+</programlisting>
+
+	<para>
+And ran the resulting <filename>rc.lvs</filename> script on all the servers in the LVS, not I
+only have 2 realservers in the squid setup.
+	</para>
+
+	<para>
+	This gives an ipvsadm output like this
+	</para>
+
+<programlisting>
+<![CDATA[
+[root@director1 root]# ipvsadm
+IP Virtual Server version 1.0.0 (size=65536)
+Prot LocalAddress:Port Scheduler Flags
+  -> RemoteAddress:Port           Forward Weight ActiveConn InActConn
+TCP  vip:3128 rr
+  -> rip1:3128                    Route   1      0          0
+  -> rip2:3128                    Route   1      0          0
+]]>
+</programlisting>
+
+	<para>(
+from Joe - at this stage the realservers, setup by the 0.9.x configure
+script, were blocked from accessing webservers on the internet.
+This problem is explained in the 3-Tier section of the HOWTO and led
+to the next version of the configure script.)
+	</para>
+	<para>
+In the meantime I discovered that if I restarted the network on the
+realservers after the <filename>rc.lvs</filename> script had been executed then the realservers
+could access the outside world.
+Also during this time whilst Joe was working on the alterations to the
+configure script I set about testing the Squid LVS and writing scripts to
+handle realserver failure and set about introducing a backup director.
+	</para>
+	<para>
+At this stage I had a squid LVS which was using rr scheduling, it soon
+became apparent that rr scheduling wasn't going to work on it's own.
+Some HTTPS sites (<emphasis>e.g.</emphasis> banking facilities)
+won't accept requests for a client coming from multiple IP
+address, so I tried the various schedulers and the use of persistence to get
+the LVS to balance satisfactorily for all sites. (Joe - this is described
+more in the HOWTO in the Services section on squids.)
+	</para>
+	<para>
+I have found that wlc with a persistence of 360 seconds works beautifully.
+This ensures that requests from a particular client are sent to the same
+realserver for 6 minutes (that's a rolling 6 minutes).
+The timeout can be increased, but most banking facilities will timeout
+a connection if inactivity exceeds a few minutes.
+	</para>
+<programlisting>
+<![CDATA[
+[root@director1 root]# ipvsadm
+IP Virtual Server version 1.0.0 (size=65536)
+Prot LocalAddress:Port Scheduler Flags
+  -> RemoteAddress:Port           Forward Weight ActiveConn InActConn
+TCP  vip:3128 wlc -p 360
+  -> rip1:3128                    Route   1      0          0
+  -> rip2:3128                    Route   1      0          0
+]]>
+</programlisting>
+	</section>
+	<section id="two_box_lvs">
+	<title>Two Box LVS</title>
+	<para>
+It's possible to setup two boxes as a fully functional failover LVS.
+When one box is the director, it is also serving as a realserver with localnode
+and the other box is another realserver. The two boxes run failover
+code to allow them to swap roles as directors. 
+This is more complicated than you'd want for one of your first setups,
+and in practice there are problems handling the failover. 
+These are discussed in the 
+<ulink url="http://www.austintek.com/LVS/LVS-HOWTO/HOWTO/LVS-HOWTO.localnode.html">
+Localnode section of the HOWTO 
+http://www.austintek.com/LVS/LVS-HOWTO/HOWTO/LVS-HOWTO.localnode.html#two_box_lvs
+</ulink>
+	</para>
+	</section>
+</section>
+<section id="problems"><title>What if there are problems</title>
+	<section id="compile_doesnt_work">
+	<title>can't patch kernel, can't compile patched kernel</title>
+        <note>
+LVS is part of the kernel now. You don't need to patch it anymore.
+	</note>
+	<itemizedlist>
+		<listitem>
+Are you using the <link linkend="fresh_kernel">standard kernel</link>?
+		</listitem>
+		<listitem>
+Does your version of ip_vs match the kernel
+		</listitem>
+		<listitem>
+does your ipvsadm come from the tarball for your version of ip_vs.
+		</listitem>
+	</itemizedlist>
+	</section>
+	<section id="cant_compile_ipvsadm">
+	<title>Can't compile ipvsadm</title>
+	<para>
+You (probably) installed a kernel binary 
+and when you try to compile <command>ipvsadm</command>,
+you get error messages about missing header files.
+	</para>
+	<para>
+Problem: You don't have the kernel header files 
+(in <filename>/usr/src/linux/include/linux/</filename>) 
+linked from 
+<filename>/usr/include/linux/</filename>. 
+	</para>
+	<para>
+Solution: Install your kernel header files and make the link.
+	</para>
+	</section>
+	<section id="ip_tables_doesnt_work">
+	<title>ip_tables doesn't work</title>
+	<para>
+Symptom: You're running 2.4.x
+and get wierd non-informative error messages from <command>ip_tables</command> 
+(<command>ip_tables</command> doesn't have useful error messages) like
+	</para>
+<programlisting> <![CDATA[
+ip_tables.o: init_module:
+Device or resource busy
+]]> </programlisting>
+	<para>
+Problem: you have ipchains loaded 
+	</para>
+	<para>
+Solution:
+<link linkend="iptables_ipchains">remove ipchains</link>
+(<emphasis>i.e.</emphasis> unload
+with <command>rmmod ipchains.o</command>).
+You should also remove ipchains support from your kernel so that
+no-one else can fall into the same trap.
+	</para>
+	</section>
+	<section id="ipvsadm_doesnt_work">
+	<title>ipvsadm gives wierd erroneous output</title>
+	<para>
+Symptom: you get inpropriate characters, numbers for IPs, ports, services
+in the output of <command>ipvsadm</command>
+	</para>
+	<para>
+Problem: your ipvsadm doesn't match the version of ip_vs. (You may have forgotten
+to compile the new version of ipvsadm after rebooting the computer following
+loading the LVS-patched kernel and you're using an old ipvsadm).
+	</para>
+	<para>
+Solution: get the ipvsadm that matches your ip_vs.
+	</para>
+	</section>
+	<section id="doesnt_work"><title>Help! My LVS doesn't work</title>
+	<para>
+Setting up an LVS from scratch for the first time requires some thinking,
+is somewhat tedious and non-obvious and there are many ways of getting it wrong.
+Confounding the problem, there are several ways in which the LVS appears to work,
+but you are just connecting directly to the realservers rather than forwarding packets
+through the director.
+Understanding how an LVS works will require some investment in time.
+	</para>
+	<para>
+Our answer till now has been to try to
+translate your posting into our language and then figure out what you've done wrong.
+We haven't seen any new problems in setting up a basic LVS since the early days,
+but replying to the same requests does take a lot of time.
+(There are still plenty of postings about how an
+LVS does or doesn't work that no-one has thought about, 
+which we are interested in.)
+Occasionally after 10 exchanges with 3 people on the mailing list
+trying to help figure out what's wrong, 
+the original poster will suddenly remember that they have filter rules 
+(which they'd "checked out thoroughly" and were sure were working)
+that they "forgot to tell us about".
+	</para>
+	<para>
+Since 1999, substantial effort has been put into the HOWTO,
+the LVS-mini-HOWTO and the configure script
+to enable people with minimal or no understanding of LVS to setup a working LVS.
+If you don't want to use a configure script,
+there is enough information here for you to setup a working LVS 
+from the command line.
+	</para>
+	<para>
+We need to get on with our real jobs too, so I'd like to try something new: -
+	</para>
+	<para>
+If you can't setup an LVS, with 1 or 2 realservers serving telnet (or httpd),
+then rather than getting us to figure out what you've done wrong,
+how about you use the tools we've provided, to setup the basic LVS.
+Once you have a working basic LVS, then you can branch out and 
+try to set it up your own way.
+If you can't get the scripts to work, then we'll try to fix those.
+	</para>
+	<para>
+If you need to contact us, first look at the
+problem report information (HOWTO) needed to solve problems.
+	</para>
+	</section>
+	<section id="connection_refused">
+	<title>The client says "connection refused"</title>
+	<para>
+The machine that receives the request packet is replying that
+it is not listening for that service. 
+Possible reasons for this are (with help from Ratz)
+	</para>
+	<itemizedlist>
+		<listitem>
+ipvsadm (on the director) has not added the service to the forwarding table
+(seen in the output of ipvsadm)
+		</listitem>
+		<listitem>
+if the service is in the ipvsadm table, 
+then the director is forwarding packets to a realserver, 
+which doesn't have the service running on the VIP (for LVS-DR and LVS-Tun)
+or the RIP (for LVS-NAT).
+		</listitem>
+		<listitem>
+a packet filter rule
+		</listitem>
+		<listitem>
+service dest is unavailable
+		</listitem>
+		<listitem>
+service is not running on RS
+		</listitem>
+		<listitem>
+he's misspelling the IP address
+		</listitem>
+		<listitem>
+network cable unplugged (you should get icmp "host down" type replies here)
+		</listitem>
+		<listitem>
+your networking isn't set up correctly <emphasis>e.g.</emphasis> 
+the RIPs and DIP aren't in the same network 
+or you have a non-standard subnet (not /24) and you've forgotten
+to match the netmasks. 
+For LVS-DR the DIP and the RIPs aren't on the same segment.
+		</listitem>
+	</itemizedlist>
+	<para>
+For LVS-DR/Tun when you have the VIP on lo/dummy/tun0, the VIP (including the director)
+is on a /32 network.
+Otherwise (LVS-NAT) the VIP is on the same netmask for the other IPs.
+	</para>
+	</section>
+	<section id="connection_times_out">
+	<title>connection times out</title>
+	<para>
+The packets from the client are getting to the realserver, 
+but replies are not getting back to the client.
+Is there a route from the realserver to the client?
+(for LVS-NAT, the realserver's gw is the director,
+for LVS-DR/LVS-Tun the gw is any machine but the director).
+	</para>
+	<para>
+If packets weren't making it to the realserver, 
+the client would get icmp packets showing "no route to host"
+or "connection refused".
+	</para>
+	</section>
+	<section id="connection_hangs_entries_in_inactconn">
+	<title>connection hangs; ipvsadm shows entries in InActConn, but none in ActiveConn</title>
+	<para>
+The usual mistake is to have the default gw for the realservers set incorrectly.
+	</para>
+	<itemizedlist>
+		<listitem>
+VS-NAT: the default gw <emphasis>must</emphasis> be the director.
+There <emphasis>cannot</emphasis> be any other path from the realservers to the client,
+except through the director.
+		</listitem>
+		<listitem>
+VS-DR, LVS-Tun: the default gw <emphasis>cannot</emphasis> be the director -
+use some local router.
+		</listitem>
+	</itemizedlist>
+	<para>
+	If you are using LVS-NAT and one network, you must also
+<ulink url="http://www.austintek.com/LVS/LVS-HOWTO/HOWTO/LVS-HOWTO.LVS-NAT.html#one_network">
+handle the ICMP redirects</ulink>.
+	</para>
+	<para>
+		<note>
+		<para>
+Billy <emphasis> ntadmin (at) reachone (dot) com</emphasis> 18 Mar 2004
+		</para>
+		<para>
+If your LVS <emphasis role="bold">is working</emphasis> 
+and you have connections that disconnect (like with http),
+by the time you've downloaded your page, 
+the connection will be in the InActConn state.
+See 
+<ulink url="http://www.austintek.com/LVS/LVS-HOWTO/HOWTO/LVS-HOWTO.services.single-port.html#http_stateless">
+ httpd is stateless and normally closes connections</ulink>
+(http://www.austintek.com/LVS/LVS-HOWTO/HOWTO/LVS-HOWTO.services.single-port.html#http_stateless).
+Connections being in InActConn state is a diagnostic only if the connection is hanging
+(<emphasis>i.e.</emphasis> the client is not receiving webpages from the LVS).
+		</para>
+		</note>
+	</para>
+	</section>
+	<section id="connection_delayed">
+	<title>initial connection is delayed, but once connected everything is fine</title>
+	<para>
+Usually you have problems with
+<ulink url="http://www.austintek.com/LVS/LVS-HOWTO/HOWTO/LVS-HOWTO.authd.html">
+authd/identd</ulink>.
+Simplest thing is to stop your service on the realserver
+from calling the identd server on the client
+(<emphasis>i.e.</emphasis>disconnect your service from identd).
+	</para>
+	<para>
+Another problem, which causes slowness in any situation, is DNS timing out
+on a call. Ideally you shouldn't have DNS running on any machine in an LVS 
+- you will need to run sendmail etc off <filename>/etc/hosts</filename>.
+However if you have DNS, make sure there are entries for all IPs on that
+machine (if you have multiple interfaces) and any machine that you'll be calling.
+To check, run commands that need name resolution <emphasis>e.g.</emphasis>
+<command>netstat -a</command> 
+(will need entries in <filename>/etc/services</filename> as well) 
+or <command>route</command> (will need entries in 
+<filename>/etc/networks</filename> as well). If either of these pause,
+rerun them in the form which doesn't need name resolution
+(<command>netstat -an</command>, <command>route -n</command>) 
+to locate the entries forcing the pause - these don't have name
+resolution.
+	</para>
+	</section>
+        <section id="rp_filter">
+        <title>rp_filter incorrect</title>
+	<para>
+Some distros (<emphasis>e.g.</emphasis> Debian) 
+are setting rp_filter incorrectly 
+(see <ulink url="http://www.austintek.com/LVS/LVS-HOWTO/HOWTO/LVS-HOWTO.LVS-DR.html#set_rp_filter"> 
+http://snow.mack.net/WWW//LVS/LVS-HOWTO/HOWTO/LVS-HOWTO.LVS-DR.html#set_rp_filter</ulink>).
+	</para>
+	</section>
+	<section id="connection_still_delayed">
+	<title>connection takes several seconds to connect</title>
+	<para>
+I've had trouble with this once when my routing was wrong and ICMP had to
+figure it out for me.
+Another possibility is a delay from DNS lookup.
+Try connecting to the name of the VIP and to the IP.
+	</para>
+	<para>
+Graeme Fowler <emphasis>graeme (at) graemef (dot) net</emphasis> 26 Jul 2007 
+	</para>
+	<para>
+Have you ensured:
+	</para>
+<programlisting><![CDATA[
+HostnameLookups Off
+]]></programlisting>
+	<para>
+is set in your Apache config? This delay seems symptomatic of Apache (or
+the application it's providing) doing a reverse lookup for the calling
+IP, and timing out. Subsequent connections in the same session will then
+be fine as the resolver libraries will cache the negative (or failed)
+response until some time later.
+Alternatively, does the application need to do some sort of callback?
+	</para>
+	<note>
+Joe: If you want any sort of speed in your application, it can't be doing DNS lookups.
+The packet arrives with the CIP already known. See if you can do with that
+and not the name.
+	</note>
+	</section>
+	<section id="wrong_netmask_VIP">
+	<title>Netmask for VIP wrong</title>
+	<para>
+The netmask for the VIP is
+	</para>
+	<itemizedlist>	
+		<listitem>
+LVS-DR, LVS-Tun: /32
+		</listitem>
+		<listitem>
+LVS-NAT: same as network on outside of director
+		</listitem>
+	</itemizedlist>
+	<para>
+see <ulink url="http://www.austintek.com/LVS/LVS-HOWTO/HOWTO/LVS-HOWTO.ipvsadm.html#netmask_for_VIP">
+http://www.austintek.com/LVS/LVS-HOWTO/HOWTO/LVS-HOWTO.ipvsadm.html#netmask_for_VIP</ulink>
+	</para>
+	</section>
+	<section id="only_one_realserver">
+	<title>My LVS doesn't loadbalance, the client always goes to the same realserver</title>
+	<para>
+This is for LVS-DR or LVS-Tun. 
+The most likely explanation is that you haven't solved the 
+<ulink url="http://www.austintek.com/LVS/LVS-HOWTO/HOWTO/LVS-HOWTO.arp_problem.html">arp problem</ulink>
+(http://www.austintek.com/LVS/LVS-HOWTO/HOWTO/LVS-HOWTO.arp_problem.html).
+To check that you've handled the arp problem you can 
+<ulink url="http://www.austintek.com/LVS/LVS-HOWTO/HOWTO/LVS-HOWTO.arp_problem.html#testing_for_arp">
+test the interface on the realserver 
+</ulink>
+(http://www.austintek.com/LVS/LVS-HOWTO/HOWTO/LVS-HOWTO.arp_problem.html#testing_for_arp).
+	</para>
+	</section>
+	<section id="doesnt_work_2">
+	<title>My LVS still doesn't work: what do I do now?</title>
+	<para>
+If you've setup the simple telnet LVS from the
+LVS-mini-HOWTO and now are
+trying your own LVS, and it doesn't work,
+you'll have to debug your setup.
+	</para>
+	<para>
+First take your realserver offline (pull the network cable)
+and start the service listening on
+RIP:port (VS-NAT) or VIP:port (VS-DR, LVS-Tun).
+	<note>no matter what service you'll run in production,
+as a test telnet is a much easier service to debug.
+I know you want your try out your superduper
+shockwave webserver with java applets,
+but you can get that to run later.
+Try with telnet first OK?
+It will save you a round of questions
+on the LVS mailing list.
+	</note>
+	</para>
+	<para>
+Check that the service (initially telnet) is running (netstat -an).
+Connect to the service from a simple client running on the
+realserver (eg telnet VIP 80, lynx VIP). Then use your usual
+client (a web browser say). Make sure your service
+can do all the things that you expect the client
+on the internet to be able to do.
+	</para>
+	<para>
+Then connect the realserver to the LVS network
+and set its default gw (to the DIP for LVS-NAT,
+to the router for LVS-DR, LVS-Tun), add the
+VIP:services to the director with ipvsadm
+(or the configure script, see mini-HOWTO)
+using rr scheduling. Check that
+ipvsadm shows your realserver:service.
+	</para>
+	<para>
+Make sure you have no firewalls between the client
+and the LVS, otherwise all bets are off.
+	</para>
+	<para>
+Then connect to the VIP:service from a simple
+client (<emphasis>e.g.</emphasis> telnet VIP port), check
+that you can get to all the realservers one
+by one (watch on the director with ipvsadm).
+Then use your usual client for the service
+(eg a webbrowser).
+	</para>
+	<para>
+If your connection requests aren't connecting,
+then you need to see where the packets are being stopped.
+You can watch packets with <command>tcpdump</command> or
+<command>netstat -an</command> (to see whether the request
+has left one node or arrived at another and to see if
+replies have been made).
+	</para>
+	</section>
+</section>
+<programlisting><![CDATA[
+]]></programlisting>
+</article>
